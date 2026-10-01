@@ -809,8 +809,17 @@ def scrape_semiconductor_career_portals_playwright(
                         len(rows) - jobs_before,
                     )
         finally:
-            context.close()
-            browser.close()
+            for resource, name in (
+                (page, "page"),
+                (context, "browser context"),
+                (browser, "browser"),
+            ):
+                try:
+                    resource.close()
+                except KeyboardInterrupt:
+                    log.warning("Interrupted while closing Playwright %s", name)
+                except Exception as exc:
+                    log.warning("Failed to close Playwright %s: %s", name, exc)
 
     if fallback_to_job_boards and len(rows) < results_wanted:
         from jobspy import scrape_semiconductor_career_portals

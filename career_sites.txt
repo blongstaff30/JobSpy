@@ -1,51 +1,44 @@
 # Top semiconductor company career portals.
 TSMC | https://careers.tsmc.com/en_US/careers/SearchJobs
 Intel | https://intel.wd1.myworkdayjobs.com/External
-Samsung Electronics | https://www.samsung.com/us/careers/
-SK hynix | https://www.skhynix.com/careers/
+Samsung Electronics | https://sec.wd3.myworkdayjobs.com/Samsung_Careers
+SK hynix | default
 Micron Technology | https://careers.micron.com/
-Qualcomm | https://www.qualcomm.com/company/careers
-Broadcom | https://www.broadcom.com/company/careers
-MediaTek | https://careers.mediatek.com/
-NVIDIA | https://www.nvidia.com/en-us/about-nvidia/careers/
-Texas Instruments | https://careers.ti.com/
-Infineon Technologies | https://www.infineon.com/cms/en/careers/
-STMicroelectronics | https://careers.st.com/
-NXP Semiconductors | https://www.nxp.com/company/about-nxp/careers:CAREERS
-ASE Technology | https://www.aseglobal.com/careers/
-United Microelectronics Corporation | https://www.umc.com/en/Careers
-GlobalFoundries | https://gf.com/careers/
-Kioxia | https://www.kioxia-holdings.com/en-jp/careers/
-Analog Devices | https://www.analog.com/en/about-adi/careers.html
-Microchip Technology | https://careers.microchip.com/
-Marvell Technology | https://www.marvell.com/company/careers.html
-onsemi | https://www.onsemi.com/careers
-Renesas Electronics | https://jobs.renesas.com/
-Sony Semiconductor Solutions | https://www.sony-semicon.com/en/recruit/
-Western Digital | https://www.westerndigital.com/company/careers
-Yangtze Memory Technologies | https://www.ymtc.com/en/join
-Semiconductor Manufacturing International Corporation | https://www.smics.com/en/site/company_careers
+Qualcomm | https://careers.qualcomm.com/careers?start=0
+Broadcom | https://broadcom.wd1.myworkdayjobs.com/External_Career
+MediaTek | https://careers.mediatek.com/en/jobs?query=intern&locations=
+NVIDIA | https://jobs.nvidia.com/careers?start=0
+Texas Instruments | https://careers.ti.com/en/sites/CX/jobs?keyword=intern&mode=location
+Infineon Technologies | https://jobs.infineon.com/careers?query=intern&start=0
+STMicroelectronics | https://stmicroelectronics.eightfold.ai/careers?recruiting_type=ORA_Campus&hl=en
+NXP Semiconductors | https://nxp.wd3.myworkdayjobs.com/careers
+GlobalFoundries | https://careers.gf.com/careers?start=0&
+Analog Devices | https://analogdevices.wd1.myworkdayjobs.com/External
+Microchip Technology | https://wd5.myworkdaysite.com/recruiting/microchiphr/External
+Marvell Technology | https://marvell.wd1.myworkdayjobs.com/MarvellCareers/
+onsemi | https://hctz.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/jobs?mode=location
+Renesas Electronics | https://jobs.renesas.com/jobs?q=intern&options=&page=1
+Sony Semiconductor Solutions | https://www.sonyjobs.com/jobs.html
+Western Digital | https://careers.smartrecruiters.com/WesternDigital
 Tower Semiconductor | https://towersemi.com/careers/
-Vishay Intertechnology | https://www.vishay.com/en/company/careers/
-Skyworks Solutions | https://www.skyworksinc.com/en/Company/Careers
-Lattice Semiconductor | https://www.latticesemi.com/About/Company/Careers
-Soitec | https://www.soitec.com/en/careers
+Skyworks Solutions | https://careers.skyworksinc.com/go/Internships-and-Recent-College-Grads/9923100/
+Lattice Semiconductor | https://latticesemi.wd5.myworkdayjobs.com/latticesemiconductorscareers?
+Soitec | https://careers-soitec.icims.com/jobs/search?
 Applied Materials | https://careers.appliedmaterials.com/careers
-ASML | https://www.asml.com/en/careers
-Lam Research | https://www.lamresearch.com/careers/
-KLA | https://www.kla.com/careers
-Tokyo Electron | https://www.tel.com/careers/
-ASM International | https://www.asm.com/careers/
-Teradyne | https://www.teradyne.com/careers/
-Advantest | https://www.advantest.com/careers/
-Synopsys | https://www.synopsys.com/careers.html
-Cadence Design Systems | https://www.cadence.com/en_US/home/company/careers.html
-Siemens EDA | https://jobs.sw.siemens.com/
-Keysight Technologies | https://jobs.keysight.com/
-Onto Innovation | https://ontoinnovation.com/careers/
-FormFactor | https://www.formfactor.com/careers/
-Entegris | https://www.entegris.com/en/home/company/careers.html
-Coherent | https://www.coherent.com/company/careers
-MKS Instruments | https://www.mks.com/careers
-Axcelis Technologies | https://www.axcelis.com/careers/
-Kulicke & Soffa | https://www.kns.com/careers
+ASML | https://www.asml.com/en/careers/find-your-job?icmp=careers-home-header-link
+Lam Research | https://careers.lamresearch.com/careers?start=0&
+KLA | https://kla.wd1.myworkdayjobs.com/Search
+Tokyo Electron | https://tel.wd3.myworkdayjobs.com/en-US/TEL-Careers
+ASM International | https://www.asm.com/open-vacancies
+Teradyne | https://jobs.teradyne.com/search/?createNewAlert=false&q=intern
+Advantest | https://myjobs.adp.com/advantestcareers/cx/job-listing?FIELD4=Intern&recruitment_country=us
+Synopsys | https://careers.synopsys.com/category/interns-temp-jobs/44408/8675664/1
+Cadence Design Systems | https://cadence.wd1.myworkdayjobs.com/External_Careers
+Keysight Technologies | https://jobs.keysight.com/external/jobs?keywords=intern
+Onto Innovation | https://wd1.myworkdaysite.com/recruiting/onto/ONTO_Careers
+FormFactor | https://formfactor.wd1.myworkdayjobs.com/FFI-Careers
+Entegris | https://entegris.wd1.myworkdayjobs.com/EntegrisCareers
+Coherent | https://hcwp.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+MKS Instruments | https://mksinst.wd1.myworkdayjobs.com/MKSCareersAmericas
+Axcelis Technologies | https://axcelis.wd1.myworkdayjobs.com/axcelis
+Kulicke & Soffa | https://careers.kns.com/en/sites/CX_1/jobs?keyword=intern&mode=location
