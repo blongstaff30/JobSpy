@@ -669,38 +669,32 @@ def scrape_semiconductor_career_portals_playwright(
             1, min(timeout, int((deadline - time.monotonic()) * 1000))
         )
         page.set_default_timeout(min(interaction_timeout, remaining_ms))
-        selectors = (
-            'a[rel="next"]',
-            'button:has-text("Next")',
-            'a:has-text("Next")',
-            'button:has-text("Load more")',
-            'button:has-text("Show more")',
-            'a:has-text("Load more")',
-            'a:has-text("Show more")',
+        before = page.content()
+        clicked = page.evaluate(
+            """() => {
+                const controls = [...document.querySelectorAll(
+                    'a[rel="next"], button, a'
+                )];
+                const labels = ['next', 'load more', 'show more'];
+                const control = controls.reverse().find((element) => {
+                    const text = (element.innerText || element.textContent || '')
+                        .trim().toLowerCase();
+                    const rect = element.getBoundingClientRect();
+                    return labels.some((label) => text === label || text.includes(label))
+                        && rect.width > 0 && rect.height > 0
+                        && !element.disabled
+                        && element.getAttribute('aria-disabled') !== 'true';
+                });
+                if (!control) return false;
+                control.click();
+                return true;
+            }"""
         )
-        for selector in selectors:
-            control = page.locator(selector).last
-            try:
-                if (
-                    control.count() == 0
-                    or not control.is_visible()
-                    or not control.is_enabled()
-                ):
-                    continue
-                before = page.content()
-                control.click()
-                page.wait_for_load_state("domcontentloaded", timeout=remaining_ms)
-                page.wait_for_timeout(min(750, remaining_ms))
-                return page.content() != before
-            except PlaywrightTimeoutError:
-                raise
-            except Exception:
-                continue
-            except KeyboardInterrupt:
-                if verbose:
-                    log.warning("Pagination interrupted; skipping current portal")
-                return False
-        return False
+        if not clicked:
+            return False
+        page.wait_for_load_state("domcontentloaded", timeout=remaining_ms)
+        page.wait_for_timeout(min(750, remaining_ms))
+        return page.content() != before
 
     with sync_playwright() as playwright:
         browser = playwright.firefox.launch()

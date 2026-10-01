@@ -20,7 +20,7 @@ def main() -> None:
         location="United States",
         results_wanted=50,
         results_wanted_per_company=1,
-        max_pages_per_company=30,
+        max_pages_per_company=5,
         delay=1.0,
         fallback_to_job_boards=False,
         fallback_sites=["google", "linkedin", "indeed"],
