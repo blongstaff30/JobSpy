@@ -543,7 +543,7 @@ def scrape_semiconductor_career_portals_playwright(
     results_wanted_per_company: int | None = None,
     companies: list[str] | tuple[str, ...] | None = None,
     max_pages_per_company: int = 100,
-    company_timeout: float = 60.0,
+    company_timeout: float = 30.0,
     timeout: int = 20_000,
     interaction_timeout: int = 2_000,
     delay: float = 1.0,

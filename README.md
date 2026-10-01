@@ -178,7 +178,7 @@ It uses a Firefox user agent, discovers search inputs by placeholder or
 accessible label, submits the role query, follows pagination/load-more
 controls, and blocks images, fonts, media, stylesheets, and common analytics/ad
 requests. `max_pages_per_company` defaults to 100 as a loop safety limit.
-Each company also has a 60-second timeout by default so a stalled portal is
+Each company also has a 30-second timeout by default so a stalled or oversized portal is
 skipped and scraping can continue; override it with `company_timeout`.
 Interactive locator checks use a separate 2-second timeout by default so
 missing search or pagination controls do not block on the full navigation
