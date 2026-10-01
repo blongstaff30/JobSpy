@@ -665,6 +665,8 @@ def scrape_semiconductor_career_portals_playwright(
         )
         page.set_default_timeout(min(interaction_timeout, remaining_ms))
         search_box = page.locator(
+            '[data-automation-id="keywordSearchInput"], '
+            '[data-automation-id="searchBox"], '
             'input[placeholder*="search" i], '
             'input[placeholder*="keyword" i], '
             'input[aria-label*="search" i], '
@@ -681,6 +683,7 @@ def scrape_semiconductor_career_portals_playwright(
             if form.count():
                 submit = form.locator(
                     'button[type="submit"], input[type="submit"], '
+                    '[data-automation-id="searchButton"], '
                     'button:has-text("Search"), button:has-text("Find")'
                 ).first
                 if submit.count():
@@ -787,30 +790,6 @@ def scrape_semiconductor_career_portals_playwright(
                 pages_read = 0
                 jobs_before = len(rows)
                 page.set_default_timeout(int(company_timeout * 1000))
-                direct_ats = _ats_type(urlsplit(company.careers_url).netloc)
-                if direct_ats:
-                    try:
-                        ats_rows = _ats_jobs(
-                            direct_ats,
-                            company.careers_url,
-                            company,
-                            role_terms,
-                            location_aliases,
-                            requests.Session(),
-                            search_query=portal_search_query,
-                        )
-                    except (requests.RequestException, ValueError):
-                        ats_rows = []
-                    rows.extend(
-                        ats_rows[
-                            : min(
-                                company_limit,
-                                results_wanted - len(rows),
-                            )
-                        ]
-                    )
-                    if len(rows) - company_rows_before >= company_limit:
-                        continue
                 search_queries = [portal_search_query]
                 if "intern" not in portal_search_query.casefold():
                     search_queries.append("intern")
@@ -845,6 +824,15 @@ def scrape_semiconductor_career_portals_playwright(
                             ),
                         )
                         page.wait_for_timeout(min(750, remaining_ms))
+                        if _ats_type(urlsplit(company.careers_url).netloc) == "workday":
+                            page.locator(
+                                '[data-automation-id="keywordSearchInput"], '
+                                '[data-automation-id="jobTitle"], '
+                                'a[href*="/job/"]'
+                            ).first.wait_for(
+                                state="attached",
+                                timeout=min(remaining_ms, interaction_timeout),
+                            )
                         search_portal(page, company, search_query, company_deadline)
                     except PlaywrightTimeoutError:
                         if verbose:
@@ -1085,12 +1073,23 @@ def _parse_rendered_job_links(
         job_url = requests.compat.urljoin(page_url, href)
         path = urlsplit(job_url).path.casefold()
         classes = " ".join(anchor.get("class", [])).casefold()
+        is_workday_job_title = (
+            anchor.get("data-automation-id") == "jobTitle"
+        )
         if not (
-            any(term in path for term in ("/job", "/jobs", "jobposting", "requisition"))
+            is_workday_job_title
+            or any(
+                term in path
+                for term in ("/job", "/jobs", "jobposting", "requisition")
+            )
             or any(term in classes for term in ("job", "posting", "requisition"))
         ):
             continue
         card = anchor.find_parent(["article", "li"])
+        if card is None and is_workday_job_title:
+            card = anchor.find_parent(
+                attrs={"data-automation-id": "responsiveCard"}
+            )
         if card is None:
             for parent in anchor.parents:
                 parent_classes = " ".join(parent.get("class", [])).casefold()

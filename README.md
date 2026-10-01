@@ -178,10 +178,9 @@ It uses a Firefox user agent, discovers search inputs by placeholder or
 accessible label, submits the role query, follows pagination/load-more
 controls, and blocks images, fonts, media, stylesheets, and common analytics/ad
 requests. `max_pages_per_company` defaults to 100 as a loop safety limit.
-Known Workday URLs are queried through their public CXS jobs endpoint before
-browser scraping, including both `myworkdayjobs.com` and
-`myworkdaysite.com` URL formats. The portal search query remains `role` (for
-example, `intern`), while keyword-file filtering is applied to the returned
+Workday pages are loaded and searched through Playwright like the other
+portals; the crawler recognizes Workday's `keywordSearchInput`, `searchButton`,
+and `jobTitle` elements while keyword-file filtering is applied to rendered
 postings.
 Each company also has a 30-second timeout by default so a stalled or oversized portal is
 skipped and scraping can continue; override it with `company_timeout`.
