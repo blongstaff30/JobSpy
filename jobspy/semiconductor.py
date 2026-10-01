@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from importlib.resources import files
+import csv
 import json
 import logging
 from pathlib import Path
@@ -40,6 +41,23 @@ def _matches_job(title: str, description: str, role_terms: list[str]) -> bool:
     matched_terms = sum(term in haystack for term in role_terms)
     required_terms = (len(role_terms) + 1) // 2
     return matched_terms >= required_terms
+
+
+def load_semiconductor_keywords(path: str | Path) -> list[str]:
+    """Load quoted, comma-separated keyword phrases from a UTF-8 file."""
+    keywords: list[str] = []
+    reader = csv.reader(
+        Path(path).read_text(encoding="utf-8").splitlines(),
+        skipinitialspace=True,
+    )
+    for row in reader:
+        for keyword in row:
+            keyword = keyword.strip()
+            if keyword and not keyword.startswith("#"):
+                keywords.append(keyword.casefold())
+    if not keywords:
+        raise ValueError(f"No keywords found in {path}")
+    return keywords
 
 
 def _ats_jobs(
@@ -253,6 +271,7 @@ def get_semiconductor_career_sites(
 def scrape_semiconductor_career_portals(
     role: str = "process engineering intern",
     *,
+    keywords_file: str | Path | None = None,
     location: str | None = None,
     results_wanted: int = 10,
     companies: list[str] | tuple[str, ...] | None = None,
@@ -292,11 +311,11 @@ def scrape_semiconductor_career_portals(
     headers = {"User-Agent": user_agent}
     session = requests.Session()
     session.headers.update(headers)
-    role_terms = [
-        term.casefold()
-        for term in role.split()
-        if len(term.strip()) >= 3
-    ]
+    role_terms = (
+        load_semiconductor_keywords(keywords_file)
+        if keywords_file is not None
+        else [term.casefold() for term in role.split() if len(term.strip()) >= 3]
+    )
     requested_location = (location or "").casefold()
     location_aliases = {
         "united states": ("united states", "usa", "us"),
@@ -473,6 +492,7 @@ def scrape_semiconductor_career_portals_playwright(
     *,
     search_query: str | None = None,
     filter_role: str | None = None,
+    keywords_file: str | Path | None = None,
     career_sites_file: str | Path | None = None,
     location: str | None = None,
     results_wanted: int = 10,
@@ -513,7 +533,11 @@ def scrape_semiconductor_career_portals_playwright(
         else _select_semiconductor_companies(companies)
     )
     filter_terms = filter_role if filter_role is not None else role
-    role_terms = [term.casefold() for term in filter_terms.split() if len(term) >= 3]
+    role_terms = (
+        load_semiconductor_keywords(keywords_file)
+        if keywords_file is not None
+        else [term.casefold() for term in filter_terms.split() if len(term) >= 3]
+    )
     portal_search_query = search_query if search_query is not None else role
     location_aliases = _location_aliases(location)
     rows: list[dict[str, object]] = []
@@ -965,6 +989,7 @@ __all__ = [
     "get_semiconductor_career_sites",
     "get_semiconductor_companies",
     "get_semiconductor_job_searches",
+    "load_semiconductor_keywords",
     "scrape_semiconductor_career_portals",
     "scrape_semiconductor_career_portals_playwright",
     "scrape_semiconductor_jobs",

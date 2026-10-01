@@ -15,7 +15,7 @@ def main() -> None:
 
     jobs = scrape_semiconductor_career_portals_playwright(
         role="intern",
-        filter_role="process engineering intern MSE",
+        keywords_file="keywords.txt",
         companies=["Intel", "TSMC", "Applied Materials"],
         location="United States",
         results_wanted=10,

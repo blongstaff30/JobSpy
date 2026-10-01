@@ -141,7 +141,7 @@ Pass that file to the Playwright scraper:
 ```python
 jobs = scrape_semiconductor_career_portals_playwright(
     role="intern",
-    filter_role="process engineering intern MSE",
+    keywords_file="keywords.txt",
     career_sites_file="career_sites.txt",
     location="United States",
 )
@@ -149,6 +149,17 @@ jobs = scrape_semiconductor_career_portals_playwright(
 
 The text format uses less parsing overhead than a structured JSON file for a
 simple URL list.
+
+Keyword filtering can also be loaded from a UTF-8 file. Keywords are
+comma-separated and quoted so multi-word phrases stay together:
+
+```text
+"Process Engineer", "TCAD Modeling", "R&D", "Materials"
+```
+
+Pass `keywords_file` to either official-portal scraper. The portal still
+searches using `role` (or `search_query` for Playwright), while matching uses
+the phrases from the file and retains the existing 50%-of-keywords threshold.
 
 It uses a Firefox user agent, discovers search inputs by placeholder or
 accessible label, submits the role query, follows pagination/load-more
