@@ -545,6 +545,7 @@ def scrape_semiconductor_career_portals_playwright(
     max_pages_per_company: int = 100,
     company_timeout: float = 60.0,
     timeout: int = 20_000,
+    interaction_timeout: int = 2_000,
     delay: float = 1.0,
     user_agent: str = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) "
@@ -579,6 +580,8 @@ def scrape_semiconductor_career_portals_playwright(
         raise ValueError("results_wanted_per_company must be at least 1")
     if company_timeout <= 0:
         raise ValueError("company_timeout must be greater than 0")
+    if interaction_timeout < 1:
+        raise ValueError("interaction_timeout must be at least 1")
 
     selected = (
         _load_career_sites_file(career_sites_file)
@@ -687,6 +690,7 @@ def scrape_semiconductor_career_portals_playwright(
         browser = playwright.firefox.launch()
         context = browser.new_context(user_agent=user_agent)
         page = context.new_page()
+        page.set_default_timeout(interaction_timeout)
         page.route(
             "**/*",
             lambda route: (
