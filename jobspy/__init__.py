@@ -24,6 +24,16 @@ from jobspy.util import (
     desired_order,
 )
 from jobspy.ziprecruiter import ZipRecruiter
+from jobspy.semiconductor import (
+    SEMICONDUCTOR_COMPANIES,
+    SemiconductorCompany,
+    get_semiconductor_career_sites,
+    get_semiconductor_companies,
+    get_semiconductor_job_searches,
+    scrape_semiconductor_career_portals,
+    scrape_semiconductor_career_portals_playwright,
+    scrape_semiconductor_jobs,
+)
 
 
 # Update the SCRAPER_MAPPING dictionary in the scrape_jobs function
@@ -224,4 +234,12 @@ def scrape_jobs(
 # Add BDJobs to __all__
 __all__ = [
     "BDJobs",
+    "SEMICONDUCTOR_COMPANIES",
+    "SemiconductorCompany",
+    "get_semiconductor_career_sites",
+    "get_semiconductor_companies",
+    "get_semiconductor_job_searches",
+    "scrape_semiconductor_career_portals",
+    "scrape_semiconductor_career_portals_playwright",
+    "scrape_semiconductor_jobs",
 ]
