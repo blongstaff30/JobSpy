@@ -1,5 +1,7 @@
 """Smoke test for direct portals, ATS adapters, and opt-in board fallback."""
 
+import logging
+
 from jobspy import (
     get_semiconductor_career_sites,
     scrape_semiconductor_career_portals_playwright,
@@ -7,6 +9,7 @@ from jobspy import (
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     career_sites = get_semiconductor_career_sites()
     print(f"Loaded {len(career_sites)} official semiconductor career sites.")
 
@@ -17,11 +20,11 @@ def main() -> None:
         location="United States",
         results_wanted=50,
         results_wanted_per_company=1,
-        max_pages_per_company=100,
+        max_pages_per_company=30,
         delay=1.0,
         fallback_to_job_boards=False,
         fallback_sites=["google", "linkedin", "indeed"],
-        verbose=False,
+        verbose=True,
         ignore_role_keywords=False,
     )
 
