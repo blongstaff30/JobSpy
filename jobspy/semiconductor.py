@@ -567,6 +567,7 @@ def scrape_semiconductor_career_portals_playwright(
     with ``pip install -e .[playwright]`` and ``playwright install firefox``.
     """
     try:
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
         raise ImportError(
@@ -656,6 +657,8 @@ def scrape_semiconductor_career_portals_playwright(
                     company.name,
                     search_query,
                 )
+        except PlaywrightTimeoutError:
+            raise
         except Exception as exc:
             if verbose:
                 log.info("portal %s: search form not submitted (%s)", company.name, exc)
@@ -689,6 +692,8 @@ def scrape_semiconductor_career_portals_playwright(
                 page.wait_for_load_state("domcontentloaded", timeout=remaining_ms)
                 page.wait_for_timeout(min(750, remaining_ms))
                 return page.content() != before
+            except PlaywrightTimeoutError:
+                raise
             except Exception:
                 continue
             except KeyboardInterrupt:
@@ -747,6 +752,7 @@ def scrape_semiconductor_career_portals_playwright(
                     continue
                 pages_read = 0
                 jobs_before = len(rows)
+                page.set_default_timeout(int(company_timeout * 1000))
                 search_queries = [portal_search_query]
                 if "intern" not in portal_search_query.casefold():
                     search_queries.append("intern")
@@ -782,6 +788,13 @@ def scrape_semiconductor_career_portals_playwright(
                         )
                         page.wait_for_timeout(min(750, remaining_ms))
                         search_portal(page, company, search_query, company_deadline)
+                    except PlaywrightTimeoutError:
+                        if verbose:
+                            log.warning(
+                                "portal %s: Playwright timeout; skipping company",
+                                company.name,
+                            )
+                        break
                     except Exception as exc:
                         if verbose:
                             log.warning(
@@ -791,42 +804,54 @@ def scrape_semiconductor_career_portals_playwright(
                                 exc,
                             )
                         continue
-                    while (
-                        time.monotonic() < company_deadline
-                        and
-                        pages_read < max_pages_per_company
-                        and len(rows) - company_rows_before < company_limit
-                        and len(rows) < results_wanted
-                    ):
-                        pages_read += 1
+                    try:
+                        while (
+                            time.monotonic() < company_deadline
+                            and pages_read < max_pages_per_company
+                            and len(rows) - company_rows_before < company_limit
+                            and len(rows) < results_wanted
+                        ):
+                            pages_read += 1
+                            if verbose:
+                                log.info(
+                                    "portal %s: scraped page %d/%d %s (query=%r)",
+                                    company.name,
+                                    pages_read,
+                                    max_pages_per_company,
+                                    page.url,
+                                    search_query,
+                                )
+                            html = page.content()
+                            rows.extend(
+                                _parse_portal_html(
+                                    html,
+                                    page.url,
+                                    company,
+                                    role_terms,
+                                    location_aliases,
+                                    len(rows) - company_rows_before,
+                                    min(company_limit, results_wanted - len(rows)),
+                                    ignore_role_keywords,
+                                )
+                            )
+                            rows = rows[:company_rows_before + company_limit]
+                            rows = rows[:results_wanted]
+                            if not next_page(page, company_deadline):
+                                break
+                            if delay:
+                                time.sleep(
+                                    min(
+                                        delay,
+                                        max(0, company_deadline - time.monotonic()),
+                                    )
+                                )
+                    except PlaywrightTimeoutError:
                         if verbose:
-                            log.info(
-                                "portal %s: scraped page %d/%d %s (query=%r)",
+                            log.warning(
+                                "portal %s: Playwright timeout; skipping company",
                                 company.name,
-                                pages_read,
-                                max_pages_per_company,
-                                page.url,
-                                search_query,
                             )
-                        html = page.content()
-                        rows.extend(
-                            _parse_portal_html(
-                                html,
-                                page.url,
-                                company,
-                                role_terms,
-                                location_aliases,
-                                len(rows) - company_rows_before,
-                                min(company_limit, results_wanted - len(rows)),
-                                ignore_role_keywords,
-                            )
-                        )
-                        rows = rows[:company_rows_before + company_limit]
-                        rows = rows[:results_wanted]
-                        if not next_page(page, company_deadline):
-                            break
-                        if delay:
-                            time.sleep(min(delay, max(0, company_deadline - time.monotonic())))
+                        break
                 if time.monotonic() >= company_deadline and verbose:
                     log.warning(
                         "portal %s: skipped after %.1f-second company timeout",
