@@ -589,6 +589,15 @@ def scrape_semiconductor_career_portals_playwright(
         if career_sites_file is not None
         else _select_semiconductor_companies(companies)
     )
+    if career_sites_file is not None and companies is not None:
+        requested = {company.casefold() for company in companies}
+        available = {company.name.casefold() for company in selected}
+        unknown = requested - available
+        if unknown:
+            raise ValueError(f"Unknown semiconductor company: {sorted(unknown)[0]}")
+        selected = tuple(
+            company for company in selected if company.name.casefold() in requested
+        )
     filter_terms = filter_role if filter_role is not None else role
     role_terms = (
         load_semiconductor_keywords(keywords_file)
