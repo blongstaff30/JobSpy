@@ -226,7 +226,10 @@ def _load_career_sites_file(path: str | Path | object) -> tuple[SemiconductorCom
             url = line
             host = urlsplit(url).netloc.removeprefix("www.")
             name = host.split(".")[0].replace("-", " ").title()
-        if not name or not url.startswith(("http://", "https://")):
+        if not name or (
+            url.casefold() != "default"
+            and not url.startswith(("http://", "https://"))
+        ):
             raise ValueError(
                 f"Invalid career-site entry on line {line_number}: {raw_line!r}"
             )
@@ -276,6 +279,7 @@ def scrape_semiconductor_career_portals(
     role: str = "process engineering intern",
     *,
     keywords_file: str | Path | None = None,
+    career_sites_file: str | Path | None = None,
     location: str | None = None,
     results_wanted: int = 10,
     companies: list[str] | tuple[str, ...] | None = None,
@@ -301,7 +305,11 @@ def scrape_semiconductor_career_portals(
     if max_pages_per_company < 1:
         raise ValueError("max_pages_per_company must be at least 1")
 
-    selected = SEMICONDUCTOR_COMPANIES
+    selected = (
+        _load_career_sites_file(career_sites_file)
+        if career_sites_file is not None
+        else SEMICONDUCTOR_COMPANIES
+    )
     if companies is not None:
         requested = {company.casefold() for company in companies}
         available = {company.name.casefold() for company in selected}
@@ -328,6 +336,28 @@ def scrape_semiconductor_career_portals(
     }.get(requested_location, (requested_location,))
     rows: list[dict[str, object]] = []
     for company in selected:
+        if len(rows) >= results_wanted:
+            break
+        if company.careers_url.casefold() == "default":
+            fallback = scrape_semiconductor_jobs(
+                role=role,
+                companies=[company.name],
+                site_name=list(fallback_sites),
+                location=location,
+                results_wanted=results_wanted,
+            )
+            if not fallback.empty:
+                fallback_rows = [
+                    row
+                    for row in fallback.to_dict("records")
+                    if _matches_job(
+                        str(row.get("title", "")),
+                        str(row.get("description", "")),
+                        role_terms,
+                    )
+                ]
+                rows.extend(fallback_rows[: results_wanted - len(rows)])
+            continue
         base_url = company.careers_url
         base_host = urlsplit(base_url).netloc.casefold().removeprefix("www.")
         pending = [base_url]
@@ -448,8 +478,6 @@ def scrape_semiconductor_career_portals(
                 time.sleep(delay)
 
     if fallback_to_job_boards and len(rows) < results_wanted:
-        from jobspy import scrape_semiconductor_jobs
-
         for fallback_site in fallback_sites:
             if len(rows) >= results_wanted:
                 break
@@ -644,6 +672,29 @@ def scrape_semiconductor_career_portals_playwright(
         )
         try:
             for company in selected:
+                if len(rows) >= results_wanted:
+                    break
+                if company.careers_url.casefold() == "default":
+                    fallback = scrape_semiconductor_jobs(
+                        role=role,
+                        companies=[company.name],
+                        site_name=list(fallback_sites),
+                        location=location,
+                        results_wanted=results_wanted,
+                    )
+                    if not fallback.empty:
+                        fallback_rows = [
+                            row
+                            for row in fallback.to_dict("records")
+                            if ignore_role_keywords
+                            or _matches_job(
+                                str(row.get("title", "")),
+                                str(row.get("description", "")),
+                                role_terms,
+                            )
+                        ]
+                        rows.extend(fallback_rows[: results_wanted - len(rows)])
+                    continue
                 pages_read = 0
                 jobs_before = len(rows)
                 search_queries = [portal_search_query]

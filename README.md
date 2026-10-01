@@ -133,8 +133,13 @@ line. You can optionally provide a display name before a pipe:
 ```text
 # company career portals
 Intel | https://intel.wd1.myworkdayjobs.com/External
+Example Company | default
 https://careers.example.com/jobs
 ```
+
+Use `Company Name | default` when a company does not have a direct portal
+configured. That entry skips portal crawling and uses the configured fallback
+sites (`google`, `linkedin`, and `indeed` by default).
 
 Pass that file to the Playwright scraper:
 
