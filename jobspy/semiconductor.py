@@ -677,6 +677,10 @@ def scrape_semiconductor_career_portals_playwright(
                 return page.content() != before
             except Exception:
                 continue
+            except KeyboardInterrupt:
+                if verbose:
+                    log.warning("Pagination interrupted; skipping current portal")
+                return False
         return False
 
     with sync_playwright() as playwright:
