@@ -144,6 +144,7 @@ jobs = scrape_semiconductor_career_portals_playwright(
     keywords_file="keywords.txt",
     career_sites_file="career_sites.txt",
     location="United States",
+    verbose=False,
 )
 ```
 
@@ -168,6 +169,8 @@ It uses a Firefox user agent, discovers search inputs by placeholder or
 accessible label, submits the role query, follows pagination/load-more
 controls, and blocks images, fonts, media, stylesheets, and common analytics/ad
 requests. `max_pages_per_company` defaults to 100 as a loop safety limit.
+Set `verbose=True` to enable per-company INFO diagnostics; the default
+`verbose=False` (or `--no-verbose` in a wrapper CLI) suppresses those blocks.
 Public-board fallback remains opt-in.
 
 To opt in to public-board fallback after direct portals and ATS adapters fail:
