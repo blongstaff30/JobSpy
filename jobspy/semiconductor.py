@@ -613,9 +613,16 @@ def scrape_semiconductor_career_portals_playwright(
         )
 
     def search_portal(
-        page, company: SemiconductorCompany, search_query: str
+        page,
+        company: SemiconductorCompany,
+        search_query: str,
+        deadline: float,
     ) -> None:
         """Submit one discoverable portal search form."""
+        remaining_ms = max(
+            1, min(timeout, int((deadline - time.monotonic()) * 1000))
+        )
+        page.set_default_timeout(min(interaction_timeout, remaining_ms))
         search_box = page.locator(
             'input[placeholder*="search" i], '
             'input[placeholder*="keyword" i], '
@@ -641,8 +648,8 @@ def scrape_semiconductor_career_portals_playwright(
                     search_box.press("Enter")
             else:
                 search_box.press("Enter")
-            page.wait_for_load_state("domcontentloaded", timeout=timeout)
-            page.wait_for_timeout(1000)
+            page.wait_for_load_state("domcontentloaded", timeout=remaining_ms)
+            page.wait_for_timeout(min(1000, remaining_ms))
             if verbose:
                 log.info(
                     "portal %s: submitted search for %r",
@@ -653,8 +660,12 @@ def scrape_semiconductor_career_portals_playwright(
             if verbose:
                 log.info("portal %s: search form not submitted (%s)", company.name, exc)
 
-    def next_page(page) -> bool:
+    def next_page(page, deadline: float) -> bool:
         """Click a visible next/load-more control, if present."""
+        remaining_ms = max(
+            1, min(timeout, int((deadline - time.monotonic()) * 1000))
+        )
+        page.set_default_timeout(min(interaction_timeout, remaining_ms))
         selectors = (
             'a[rel="next"]',
             'button:has-text("Next")',
@@ -675,8 +686,8 @@ def scrape_semiconductor_career_portals_playwright(
                     continue
                 before = page.content()
                 control.click()
-                page.wait_for_load_state("domcontentloaded", timeout=timeout)
-                page.wait_for_timeout(750)
+                page.wait_for_load_state("domcontentloaded", timeout=remaining_ms)
+                page.wait_for_timeout(min(750, remaining_ms))
                 return page.content() != before
             except Exception:
                 continue
@@ -754,10 +765,23 @@ def scrape_semiconductor_career_portals_playwright(
                         page.goto(
                             company.careers_url,
                             wait_until="domcontentloaded",
-                            timeout=timeout,
+                            timeout=max(
+                                1,
+                                min(
+                                    timeout,
+                                    int((company_deadline - time.monotonic()) * 1000),
+                                ),
+                            ),
                         )
-                        page.wait_for_timeout(750)
-                        search_portal(page, company, search_query)
+                        remaining_ms = max(
+                            1,
+                            min(
+                                timeout,
+                                int((company_deadline - time.monotonic()) * 1000),
+                            ),
+                        )
+                        page.wait_for_timeout(min(750, remaining_ms))
+                        search_portal(page, company, search_query, company_deadline)
                     except Exception as exc:
                         if verbose:
                             log.warning(
@@ -799,7 +823,7 @@ def scrape_semiconductor_career_portals_playwright(
                         )
                         rows = rows[:company_rows_before + company_limit]
                         rows = rows[:results_wanted]
-                        if not next_page(page):
+                        if not next_page(page, company_deadline):
                             break
                         if delay:
                             time.sleep(min(delay, max(0, company_deadline - time.monotonic())))
