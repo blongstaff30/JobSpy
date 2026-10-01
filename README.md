@@ -141,19 +141,36 @@ Pass that file to the Playwright scraper:
 ```python
 jobs = scrape_semiconductor_career_portals_playwright(
     role="intern",
-    filter_role="process engineering intern MSE",
+    keywords_file="keywords.txt",
     career_sites_file="career_sites.txt",
     location="United States",
+    verbose=False,
 )
 ```
 
 The text format uses less parsing overhead than a structured JSON file for a
 simple URL list.
 
+Keyword filtering can also be loaded from a UTF-8 file. Keywords are
+comma-separated and quoted so multi-word phrases stay together:
+
+```text
+"Process Engineer", "TCAD Modeling", "R&D", "Materials"
+```
+
+Pass `keywords_file` to either official-portal scraper. The portal still
+searches using `role` (or `search_query` for Playwright), while matching uses
+the phrases from the file. Each phrase is evaluated independently: a phrase
+matches when at least half of its words are present, rounded up, and a job is
+accepted when any phrase matches. For example, `Process Engineer` matches
+`Process` or `Engineer`, while `Materials` requires `Materials`.
+
 It uses a Firefox user agent, discovers search inputs by placeholder or
 accessible label, submits the role query, follows pagination/load-more
 controls, and blocks images, fonts, media, stylesheets, and common analytics/ad
 requests. `max_pages_per_company` defaults to 100 as a loop safety limit.
+Set `verbose=True` to enable per-company INFO diagnostics; the default
+`verbose=False` (or `--no-verbose` in a wrapper CLI) suppresses those blocks.
 Public-board fallback remains opt-in.
 
 To opt in to public-board fallback after direct portals and ATS adapters fail:
