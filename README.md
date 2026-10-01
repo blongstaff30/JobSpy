@@ -159,7 +159,10 @@ comma-separated and quoted so multi-word phrases stay together:
 
 Pass `keywords_file` to either official-portal scraper. The portal still
 searches using `role` (or `search_query` for Playwright), while matching uses
-the phrases from the file and retains the existing 50%-of-keywords threshold.
+the phrases from the file. Each phrase is evaluated independently: a phrase
+matches when at least half of its words are present, rounded up, and a job is
+accepted when any phrase matches. For example, `Process Engineer` matches
+`Process` or `Engineer`, while `Materials` requires `Materials`.
 
 It uses a Firefox user agent, discovers search inputs by placeholder or
 accessible label, submits the role query, follows pagination/load-more

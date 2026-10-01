@@ -38,9 +38,13 @@ def _matches_job(title: str, description: str, role_terms: list[str]) -> bool:
     haystack = f"{title} {description}".casefold()
     if not role_terms:
         return True
-    matched_terms = sum(term in haystack for term in role_terms)
-    required_terms = (len(role_terms) + 1) // 2
-    return matched_terms >= required_terms
+    for keyword in role_terms:
+        keyword_words = keyword.casefold().split()
+        matched_words = sum(word in haystack for word in keyword_words)
+        required_words = (len(keyword_words) + 1) // 2
+        if matched_words >= required_words:
+            return True
+    return False
 
 
 def load_semiconductor_keywords(path: str | Path) -> list[str]:
