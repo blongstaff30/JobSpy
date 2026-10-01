@@ -41,6 +41,136 @@ print(jobs.head())
 jobs.to_csv("jobs.csv", quoting=csv.QUOTE_NONNUMERIC, escapechar="\\", index=False) # to_excel
 ```
 
+### Semiconductor companies
+
+JobSpy loads 50 major semiconductor manufacturers, equipment suppliers, and EDA
+vendors from the bundled `jobspy/career_sites.txt` file. Each entry includes its
+official careers page and generated LinkedIn, Indeed, Glassdoor, and Google
+job-board URLs:
+
+```python
+from jobspy import get_semiconductor_job_searches, scrape_semiconductor_jobs
+
+searches = get_semiconductor_job_searches(
+    role="process engineering intern MSE",
+    location="United States",
+    companies=["Intel", "TSMC", "Applied Materials"],
+)
+for search in searches:
+    print(search["company"], search["careers_url"], search["careers_search"])
+
+jobs = scrape_semiconductor_jobs(
+    role="process engineering intern MSE",
+    companies=["Intel", "TSMC", "Applied Materials"],
+    site_name=["linkedin", "indeed", "google"],
+    location="United States",
+    results_wanted=25,
+)
+```
+
+`get_semiconductor_job_searches()` provides the official careers page, a
+domain-scoped careers search, and role-specific LinkedIn, Indeed, Glassdoor,
+and Google links. The helper delegates to the existing board scrapers. Results
+include the normal JobSpy columns plus `target_company` and
+`target_careers_url`.
+
+To get the official careers pages without making automated requests, use:
+
+```python
+from jobspy import get_semiconductor_career_sites
+
+career_sites = get_semiconductor_career_sites(
+    companies=["Intel", "TSMC", "Applied Materials"],
+)
+for company in career_sites:
+    print(company["company"], company["careers_url"])
+```
+
+This returns official company career URLs only. Open each site and use its own
+role, location, and internship filters; no Google Jobs or proxy is required.
+
+For portals that expose public `JobPosting` JSON-LD, JobSpy can crawl the
+official site directly:
+
+```python
+from jobspy import scrape_semiconductor_career_portals
+
+jobs = scrape_semiconductor_career_portals(
+    role="process engineering intern",
+    companies=["Intel", "TSMC", "Applied Materials"],
+    location="United States",
+    results_wanted=10,
+    ignore_role_keywords=True,
+)
+```
+
+This crawler stays on each company’s careers host, follows a small number of
+career/job links, and does not call Google Jobs or third-party boards. Portals
+that require JavaScript APIs or authentication may return no rows and need a
+dedicated adapter.
+
+For JavaScript-rendered portals, use the optional Firefox/Playwright crawler:
+
+```powershell
+python -m pip install -e ".[playwright]"
+playwright install firefox
+```
+
+```python
+from jobspy import scrape_semiconductor_career_portals_playwright
+
+jobs = scrape_semiconductor_career_portals_playwright(
+    role="intern",
+    location="United States",
+    results_wanted=10,
+)
+```
+
+The default portal list is the bundled `jobspy/career_sites.txt` file. To use a
+different lightweight list, provide another UTF-8 text file with one URL per
+line. You can optionally provide a display name before a pipe:
+
+```text
+# company career portals
+Intel | https://intel.wd1.myworkdayjobs.com/External
+https://careers.example.com/jobs
+```
+
+Pass that file to the Playwright scraper:
+
+```python
+jobs = scrape_semiconductor_career_portals_playwright(
+    role="intern",
+    filter_role="process engineering intern MSE",
+    career_sites_file="career_sites.txt",
+    location="United States",
+)
+```
+
+The text format uses less parsing overhead than a structured JSON file for a
+simple URL list.
+
+It uses a Firefox user agent, discovers search inputs by placeholder or
+accessible label, submits the role query, follows pagination/load-more
+controls, and blocks images, fonts, media, stylesheets, and common analytics/ad
+requests. `max_pages_per_company` defaults to 100 as a loop safety limit.
+Public-board fallback remains opt-in.
+
+To opt in to public-board fallback after direct portals and ATS adapters fail:
+
+```python
+jobs = scrape_semiconductor_career_portals(
+    role="process engineering intern",
+    results_wanted=10,
+    fallback_to_job_boards=True,
+    fallback_sites=["google", "linkedin", "indeed"],
+)
+```
+
+The fallback is disabled by default. When enabled, direct company portals and
+known ATS adapters are attempted first; only then are the selected JobSpy
+boards queried.
+
 ### Output
 
 ```
