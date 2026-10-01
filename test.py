@@ -13,6 +13,7 @@ from jobspy import (
 
 
 def scrape_company(company_name: str, result_queue) -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     try:
         jobs = scrape_semiconductor_career_portals_playwright(
             role="intern",
@@ -42,7 +43,7 @@ def main() -> None:
     context = multiprocessing.get_context("spawn")
     records = []
     for site in career_sites:
-        print(f"Starting {site['company']}...")
+        print(f"Starting {site['company']}...", flush=True)
         result_queue = context.Queue()
         process = context.Process(
             target=scrape_company,
@@ -51,19 +52,19 @@ def main() -> None:
         process.start()
         process.join(35)
         if process.is_alive():
-            print(f"Skipping {site['company']} after 30-second timeout.")
+            print(f"Skipping {site['company']} after 30-second timeout.", flush=True)
             process.terminate()
             process.join(5)
             continue
         try:
             status, result = result_queue.get(timeout=2)
         except Empty:
-            print(f"{site['company']} exited without results.")
+            print(f"{site['company']} exited without results.", flush=True)
             continue
         if status == "ok":
             records.extend(result[:1])
         else:
-            print(f"{site['company']} failed: {result}")
+            print(f"{site['company']} failed: {result}", flush=True)
     jobs = pd.DataFrame(records)
 
     if jobs.empty:
