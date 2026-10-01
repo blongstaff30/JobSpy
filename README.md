@@ -156,6 +156,10 @@ jobs = scrape_semiconductor_career_portals_playwright(
 The text format uses less parsing overhead than a structured JSON file for a
 simple URL list.
 
+Use `results_wanted_per_company=1` with a larger `results_wanted` value to
+collect a fixed number from each configured site instead of filling the total
+from the first sites that return matches.
+
 Keyword filtering can also be loaded from a UTF-8 file. Keywords are
 comma-separated and quoted so multi-word phrases stay together:
 

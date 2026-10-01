@@ -13,9 +13,10 @@ def main() -> None:
     jobs = scrape_semiconductor_career_portals_playwright(
         role="intern",
         keywords_file="keywords.txt",
-        companies=["Intel", "TSMC", "Applied Materials"],
+        career_sites_file="career_sites.txt",
         location="United States",
-        results_wanted=10,
+        results_wanted=50,
+        results_wanted_per_company=1,
         max_pages_per_company=100,
         delay=1.0,
         fallback_to_job_boards=False,

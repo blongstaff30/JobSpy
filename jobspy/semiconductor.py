@@ -282,6 +282,7 @@ def scrape_semiconductor_career_portals(
     career_sites_file: str | Path | None = None,
     location: str | None = None,
     results_wanted: int = 10,
+    results_wanted_per_company: int | None = None,
     companies: list[str] | tuple[str, ...] | None = None,
     max_pages_per_company: int = 3,
     timeout: int = 20,
@@ -304,6 +305,8 @@ def scrape_semiconductor_career_portals(
         raise ValueError("results_wanted must be at least 1")
     if max_pages_per_company < 1:
         raise ValueError("max_pages_per_company must be at least 1")
+    if results_wanted_per_company is not None and results_wanted_per_company < 1:
+        raise ValueError("results_wanted_per_company must be at least 1")
 
     selected = (
         _load_career_sites_file(career_sites_file)
@@ -336,6 +339,8 @@ def scrape_semiconductor_career_portals(
     }.get(requested_location, (requested_location,))
     rows: list[dict[str, object]] = []
     for company in selected:
+        company_rows_before = len(rows)
+        company_limit = results_wanted_per_company or results_wanted
         if len(rows) >= results_wanted:
             break
         if company.careers_url.casefold() == "default":
@@ -356,7 +361,14 @@ def scrape_semiconductor_career_portals(
                         role_terms,
                     )
                 ]
-                rows.extend(fallback_rows[: results_wanted - len(rows)])
+                rows.extend(
+                    fallback_rows[
+                        : min(
+                            company_limit - (len(rows) - company_rows_before),
+                            results_wanted - len(rows),
+                        )
+                    ]
+                )
             continue
         base_url = company.careers_url
         base_host = urlsplit(base_url).netloc.casefold().removeprefix("www.")
@@ -528,6 +540,7 @@ def scrape_semiconductor_career_portals_playwright(
     career_sites_file: str | Path | None = None,
     location: str | None = None,
     results_wanted: int = 10,
+    results_wanted_per_company: int | None = None,
     companies: list[str] | tuple[str, ...] | None = None,
     max_pages_per_company: int = 100,
     timeout: int = 20_000,
@@ -558,6 +571,11 @@ def scrape_semiconductor_career_portals_playwright(
             "Playwright support requires `pip install -e .[playwright]` "
             "and `playwright install firefox`."
         ) from exc
+
+    if results_wanted < 1:
+        raise ValueError("results_wanted must be at least 1")
+    if results_wanted_per_company is not None and results_wanted_per_company < 1:
+        raise ValueError("results_wanted_per_company must be at least 1")
 
     selected = (
         _load_career_sites_file(career_sites_file)
@@ -672,6 +690,8 @@ def scrape_semiconductor_career_portals_playwright(
         )
         try:
             for company in selected:
+                company_rows_before = len(rows)
+                company_limit = results_wanted_per_company or results_wanted
                 if len(rows) >= results_wanted:
                     break
                 if company.careers_url.casefold() == "default":
@@ -693,7 +713,14 @@ def scrape_semiconductor_career_portals_playwright(
                                 role_terms,
                             )
                         ]
-                        rows.extend(fallback_rows[: results_wanted - len(rows)])
+                        rows.extend(
+                            fallback_rows[
+                                : min(
+                                    company_limit,
+                                    results_wanted - len(rows),
+                                )
+                            ]
+                        )
                     continue
                 pages_read = 0
                 jobs_before = len(rows)
@@ -703,7 +730,11 @@ def scrape_semiconductor_career_portals_playwright(
                 if verbose:
                     log.info("portal %s: starting at %s", company.name, company.careers_url)
                 for search_query in search_queries:
-                    if pages_read >= max_pages_per_company or len(rows) >= results_wanted:
+                    if (
+                        pages_read >= max_pages_per_company
+                        or len(rows) - company_rows_before >= company_limit
+                        or len(rows) >= results_wanted
+                    ):
                         break
                     try:
                         page.goto(
@@ -722,7 +753,11 @@ def scrape_semiconductor_career_portals_playwright(
                                 exc,
                             )
                         continue
-                    while pages_read < max_pages_per_company and len(rows) < results_wanted:
+                    while (
+                        pages_read < max_pages_per_company
+                        and len(rows) - company_rows_before < company_limit
+                        and len(rows) < results_wanted
+                    ):
                         pages_read += 1
                         if verbose:
                             log.info(
@@ -741,11 +776,12 @@ def scrape_semiconductor_career_portals_playwright(
                                 company,
                                 role_terms,
                                 location_aliases,
-                                len(rows),
-                                results_wanted,
+                                len(rows) - company_rows_before,
+                                min(company_limit, results_wanted - len(rows)),
                                 ignore_role_keywords,
                             )
                         )
+                        rows = rows[:company_rows_before + company_limit]
                         rows = rows[:results_wanted]
                         if not next_page(page):
                             break
