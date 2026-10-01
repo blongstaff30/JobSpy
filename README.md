@@ -206,6 +206,18 @@ The fallback is disabled by default. When enabled, direct company portals and
 known ATS adapters are attempted first; only then are the selected JobSpy
 boards queried.
 
+To collect all available board results first and then all direct career-portal
+results, run:
+
+```powershell
+python scrape_all_semiconductor_jobs.py
+```
+
+The script uses `keywords.txt`, `career_sites.txt`, every supported public
+board, and every listed company. It enables portal fallback and writes the
+combined output to `semiconductor_jobs_all.txt`, with board results before
+portal results.
+
 ### Output
 
 ```
