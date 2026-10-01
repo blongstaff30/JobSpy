@@ -133,8 +133,13 @@ line. You can optionally provide a display name before a pipe:
 ```text
 # company career portals
 Intel | https://intel.wd1.myworkdayjobs.com/External
+Example Company | default
 https://careers.example.com/jobs
 ```
+
+Use `Company Name | default` when a company does not have a direct portal
+configured. That entry skips portal crawling and uses the configured fallback
+sites (`google`, `linkedin`, and `indeed` by default).
 
 Pass that file to the Playwright scraper:
 
@@ -150,6 +155,10 @@ jobs = scrape_semiconductor_career_portals_playwright(
 
 The text format uses less parsing overhead than a structured JSON file for a
 simple URL list.
+
+Use `results_wanted_per_company=1` with a larger `results_wanted` value to
+collect a fixed number from each configured site instead of filling the total
+from the first sites that return matches.
 
 Keyword filtering can also be loaded from a UTF-8 file. Keywords are
 comma-separated and quoted so multi-word phrases stay together:
@@ -169,6 +178,15 @@ It uses a Firefox user agent, discovers search inputs by placeholder or
 accessible label, submits the role query, follows pagination/load-more
 controls, and blocks images, fonts, media, stylesheets, and common analytics/ad
 requests. `max_pages_per_company` defaults to 100 as a loop safety limit.
+Workday pages are loaded and searched through Playwright like the other
+portals; the crawler recognizes Workday's `keywordSearchInput`, `searchButton`,
+and `jobTitle` elements while keyword-file filtering is applied to rendered
+postings.
+Each company has a 60-second timeout by default so slower portals have time to
+render before a stalled or oversized portal is skipped; override it with
+`company_timeout`. Page navigation uses a 45-second Playwright timeout by
+default, and interactive locator checks use a separate 10-second timeout;
+override them with `timeout` and `interaction_timeout`.
 Set `verbose=True` to enable per-company INFO diagnostics; the default
 `verbose=False` (or `--no-verbose` in a wrapper CLI) suppresses those blocks.
 Public-board fallback remains opt-in.

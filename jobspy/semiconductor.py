@@ -21,6 +21,7 @@ log = logging.getLogger("JobSpy:Semiconductor")
 
 ATS_HOSTS = {
     "myworkdayjobs.com": "workday",
+    "myworkdaysite.com": "workday",
     "greenhouse.io": "greenhouse",
     "lever.co": "lever",
 }
@@ -32,6 +33,29 @@ def _ats_type(host: str) -> str | None:
         if host == suffix or host.endswith(f".{suffix}"):
             return ats_type
     return None
+
+
+def _workday_api_endpoint(endpoint: str) -> str | None:
+    """Build a Workday CXS jobs endpoint from either public URL format."""
+    parts = urlsplit(endpoint)
+    host_parts = parts.netloc.casefold().split(".")
+    if "myworkdaysite.com" in parts.netloc.casefold():
+        path_parts = [part for part in parts.path.strip("/").split("/") if part]
+        if len(path_parts) < 3 or path_parts[0].casefold() != "recruiting":
+            return None
+        tenant, site = path_parts[1], path_parts[2]
+    else:
+        if len(host_parts) < 3:
+            return None
+        tenant = host_parts[0]
+        path_parts = [part for part in parts.path.strip("/").split("/") if part]
+        site_parts = [part for part in path_parts if part.casefold() not in {
+            "en-us", "en_us", "en-gb", "en_gb"
+        }]
+        if not site_parts:
+            return None
+        site = site_parts[0]
+    return f"{parts.scheme}://{parts.netloc}/wday/cxs/{tenant}/{site}/jobs"
 
 
 def _matches_job(title: str, description: str, role_terms: list[str]) -> bool:
@@ -71,6 +95,7 @@ def _ats_jobs(
     role_terms: list[str],
     location_aliases: tuple[str, ...],
     session: requests.Session,
+    search_query: str | None = None,
 ) -> list[dict[str, object]]:
     """Fetch jobs from a discovered public ATS endpoint."""
     host = urlsplit(endpoint).netloc.casefold().removeprefix("www.")
@@ -93,21 +118,21 @@ def _ats_jobs(
         response.raise_for_status()
         postings = response.json()
     elif ats_type == "workday":
-        parts = urlsplit(endpoint)
-        host_parts = parts.netloc.split(".")
-        if len(host_parts) < 3:
-            return []
-        tenant = host_parts[0]
-        site = parts.path.strip("/").split("/")[0]
-        if not site:
+        api_endpoint = _workday_api_endpoint(endpoint)
+        if not api_endpoint:
             return []
         response = session.post(
-            f"{parts.scheme}://{parts.netloc}/wday/cxs/{tenant}/{site}/jobs",
+            api_endpoint,
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Referer": endpoint,
+            },
             json={
                 "appliedFacets": {},
-                "limit": 20,
+                "limit": 100,
                 "offset": 0,
-                "searchText": " ".join(role_terms),
+                "searchText": search_query or " ".join(role_terms),
             },
         )
         response.raise_for_status()
@@ -122,6 +147,8 @@ def _ats_jobs(
         location = posting.get("location")
         if isinstance(location, dict):
             location = location.get("name") or location.get("city")
+        if not location:
+            location = posting.get("locationsText") or posting.get("locationText")
         location = str(location or "")
         if not _matches_job(title, description, role_terms):
             continue
@@ -138,7 +165,7 @@ def _ats_jobs(
         if not job_url:
             continue
         if posting.get("externalPath") and not job_url.startswith("http"):
-            job_url = f"{urlsplit(endpoint).scheme}://{urlsplit(endpoint).netloc}{job_url}"
+            job_url = requests.compat.urljoin(endpoint, job_url)
         rows.append(
             {
                 "site": f"company_portal_{ats_type}",
@@ -226,7 +253,10 @@ def _load_career_sites_file(path: str | Path | object) -> tuple[SemiconductorCom
             url = line
             host = urlsplit(url).netloc.removeprefix("www.")
             name = host.split(".")[0].replace("-", " ").title()
-        if not name or not url.startswith(("http://", "https://")):
+        if not name or (
+            url.casefold() != "default"
+            and not url.startswith(("http://", "https://"))
+        ):
             raise ValueError(
                 f"Invalid career-site entry on line {line_number}: {raw_line!r}"
             )
@@ -276,8 +306,10 @@ def scrape_semiconductor_career_portals(
     role: str = "process engineering intern",
     *,
     keywords_file: str | Path | None = None,
+    career_sites_file: str | Path | None = None,
     location: str | None = None,
     results_wanted: int = 10,
+    results_wanted_per_company: int | None = None,
     companies: list[str] | tuple[str, ...] | None = None,
     max_pages_per_company: int = 3,
     timeout: int = 20,
@@ -300,8 +332,14 @@ def scrape_semiconductor_career_portals(
         raise ValueError("results_wanted must be at least 1")
     if max_pages_per_company < 1:
         raise ValueError("max_pages_per_company must be at least 1")
+    if results_wanted_per_company is not None and results_wanted_per_company < 1:
+        raise ValueError("results_wanted_per_company must be at least 1")
 
-    selected = SEMICONDUCTOR_COMPANIES
+    selected = (
+        _load_career_sites_file(career_sites_file)
+        if career_sites_file is not None
+        else SEMICONDUCTOR_COMPANIES
+    )
     if companies is not None:
         requested = {company.casefold() for company in companies}
         available = {company.name.casefold() for company in selected}
@@ -328,6 +366,37 @@ def scrape_semiconductor_career_portals(
     }.get(requested_location, (requested_location,))
     rows: list[dict[str, object]] = []
     for company in selected:
+        company_rows_before = len(rows)
+        company_limit = results_wanted_per_company or results_wanted
+        if len(rows) >= results_wanted:
+            break
+        if company.careers_url.casefold() == "default":
+            fallback = scrape_semiconductor_jobs(
+                role=role,
+                companies=[company.name],
+                site_name=list(fallback_sites),
+                location=location,
+                results_wanted=results_wanted,
+            )
+            if not fallback.empty:
+                fallback_rows = [
+                    row
+                    for row in fallback.to_dict("records")
+                    if _matches_job(
+                        str(row.get("title", "")),
+                        str(row.get("description", "")),
+                        role_terms,
+                    )
+                ]
+                rows.extend(
+                    fallback_rows[
+                        : min(
+                            company_limit - (len(rows) - company_rows_before),
+                            results_wanted - len(rows),
+                        )
+                    ]
+                )
+            continue
         base_url = company.careers_url
         base_host = urlsplit(base_url).netloc.casefold().removeprefix("www.")
         pending = [base_url]
@@ -346,6 +415,9 @@ def scrape_semiconductor_career_portals(
             pages_read += 1
             soup = BeautifulSoup(response.text, "html.parser")
             ats_endpoints: dict[str, str] = {}
+            direct_ats = _ats_type(urlsplit(response.url).netloc)
+            if direct_ats:
+                ats_endpoints[direct_ats] = response.url
             for anchor in soup.select("a[href]"):
                 child_url = requests.compat.urljoin(response.url, anchor["href"])
                 ats_type = _ats_type(urlsplit(child_url).netloc)
@@ -360,6 +432,7 @@ def scrape_semiconductor_career_portals(
                         role_terms,
                         location_aliases,
                         session,
+                        search_query=role,
                     )
                 except (requests.RequestException, ValueError):
                     ats_rows = []
@@ -448,8 +521,6 @@ def scrape_semiconductor_career_portals(
                 time.sleep(delay)
 
     if fallback_to_job_boards and len(rows) < results_wanted:
-        from jobspy import scrape_semiconductor_jobs
-
         for fallback_site in fallback_sites:
             if len(rows) >= results_wanted:
                 break
@@ -500,9 +571,12 @@ def scrape_semiconductor_career_portals_playwright(
     career_sites_file: str | Path | None = None,
     location: str | None = None,
     results_wanted: int = 10,
+    results_wanted_per_company: int | None = None,
     companies: list[str] | tuple[str, ...] | None = None,
     max_pages_per_company: int = 100,
-    timeout: int = 20_000,
+    company_timeout: float = 60.0,
+    timeout: int = 45_000,
+    interaction_timeout: int = 10_000,
     delay: float = 1.0,
     user_agent: str = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) "
@@ -524,6 +598,7 @@ def scrape_semiconductor_career_portals_playwright(
     with ``pip install -e .[playwright]`` and ``playwright install firefox``.
     """
     try:
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
         raise ImportError(
@@ -531,11 +606,29 @@ def scrape_semiconductor_career_portals_playwright(
             "and `playwright install firefox`."
         ) from exc
 
+    if results_wanted < 1:
+        raise ValueError("results_wanted must be at least 1")
+    if results_wanted_per_company is not None and results_wanted_per_company < 1:
+        raise ValueError("results_wanted_per_company must be at least 1")
+    if company_timeout <= 0:
+        raise ValueError("company_timeout must be greater than 0")
+    if interaction_timeout < 1:
+        raise ValueError("interaction_timeout must be at least 1")
+
     selected = (
         _load_career_sites_file(career_sites_file)
         if career_sites_file is not None
         else _select_semiconductor_companies(companies)
     )
+    if career_sites_file is not None and companies is not None:
+        requested = {company.casefold() for company in companies}
+        available = {company.name.casefold() for company in selected}
+        unknown = requested - available
+        if unknown:
+            raise ValueError(f"Unknown semiconductor company: {sorted(unknown)[0]}")
+        selected = tuple(
+            company for company in selected if company.name.casefold() in requested
+        )
     filter_terms = filter_role if filter_role is not None else role
     role_terms = (
         load_semiconductor_keywords(keywords_file)
@@ -561,10 +654,19 @@ def scrape_semiconductor_career_portals_playwright(
         )
 
     def search_portal(
-        page, company: SemiconductorCompany, search_query: str
+        page,
+        company: SemiconductorCompany,
+        search_query: str,
+        deadline: float,
     ) -> None:
         """Submit one discoverable portal search form."""
+        remaining_ms = max(
+            1, min(timeout, int((deadline - time.monotonic()) * 1000))
+        )
+        page.set_default_timeout(min(interaction_timeout, remaining_ms))
         search_box = page.locator(
+            '[data-automation-id="keywordSearchInput"], '
+            '[data-automation-id="searchBox"], '
             'input[placeholder*="search" i], '
             'input[placeholder*="keyword" i], '
             'input[aria-label*="search" i], '
@@ -581,6 +683,7 @@ def scrape_semiconductor_career_portals_playwright(
             if form.count():
                 submit = form.locator(
                     'button[type="submit"], input[type="submit"], '
+                    '[data-automation-id="searchButton"], '
                     'button:has-text("Search"), button:has-text("Find")'
                 ).first
                 if submit.count():
@@ -589,51 +692,58 @@ def scrape_semiconductor_career_portals_playwright(
                     search_box.press("Enter")
             else:
                 search_box.press("Enter")
-            page.wait_for_load_state("domcontentloaded", timeout=timeout)
-            page.wait_for_timeout(1000)
+            page.wait_for_load_state("domcontentloaded", timeout=remaining_ms)
+            page.wait_for_timeout(min(1000, remaining_ms))
             if verbose:
                 log.info(
                     "portal %s: submitted search for %r",
                     company.name,
                     search_query,
                 )
+        except PlaywrightTimeoutError:
+            raise
         except Exception as exc:
             if verbose:
                 log.info("portal %s: search form not submitted (%s)", company.name, exc)
 
-    def next_page(page) -> bool:
+    def next_page(page, deadline: float) -> bool:
         """Click a visible next/load-more control, if present."""
-        selectors = (
-            'a[rel="next"]',
-            'button:has-text("Next")',
-            'a:has-text("Next")',
-            'button:has-text("Load more")',
-            'button:has-text("Show more")',
-            'a:has-text("Load more")',
-            'a:has-text("Show more")',
+        remaining_ms = max(
+            1, min(timeout, int((deadline - time.monotonic()) * 1000))
         )
-        for selector in selectors:
-            control = page.locator(selector).last
-            try:
-                if (
-                    control.count() == 0
-                    or not control.is_visible()
-                    or not control.is_enabled()
-                ):
-                    continue
-                before = page.content()
-                control.click()
-                page.wait_for_load_state("domcontentloaded", timeout=timeout)
-                page.wait_for_timeout(750)
-                return page.content() != before
-            except Exception:
-                continue
-        return False
+        page.set_default_timeout(min(interaction_timeout, remaining_ms))
+        before = page.content()
+        clicked = page.evaluate(
+            """() => {
+                const controls = [...document.querySelectorAll(
+                    'a[rel="next"], button, a'
+                )];
+                const labels = ['next', 'load more', 'show more'];
+                const control = controls.reverse().find((element) => {
+                    const text = (element.innerText || element.textContent || '')
+                        .trim().toLowerCase();
+                    const rect = element.getBoundingClientRect();
+                    return labels.some((label) => text === label || text.includes(label))
+                        && rect.width > 0 && rect.height > 0
+                        && !element.disabled
+                        && element.getAttribute('aria-disabled') !== 'true';
+                });
+                if (!control) return false;
+                control.click();
+                return true;
+            }"""
+        )
+        if not clicked:
+            return False
+        page.wait_for_load_state("domcontentloaded", timeout=remaining_ms)
+        page.wait_for_timeout(min(750, remaining_ms))
+        return page.content() != before
 
     with sync_playwright() as playwright:
         browser = playwright.firefox.launch()
         context = browser.new_context(user_agent=user_agent)
         page = context.new_page()
+        page.set_default_timeout(interaction_timeout)
         page.route(
             "**/*",
             lambda route: (
@@ -644,24 +754,93 @@ def scrape_semiconductor_career_portals_playwright(
         )
         try:
             for company in selected:
+                company_rows_before = len(rows)
+                company_limit = results_wanted_per_company or results_wanted
+                company_deadline = time.monotonic() + company_timeout
+                if len(rows) >= results_wanted:
+                    break
+                if company.careers_url.casefold() == "default":
+                    fallback = scrape_semiconductor_jobs(
+                        role=role,
+                        companies=[company.name],
+                        site_name=list(fallback_sites),
+                        location=location,
+                        results_wanted=results_wanted,
+                    )
+                    if not fallback.empty:
+                        fallback_rows = [
+                            row
+                            for row in fallback.to_dict("records")
+                            if ignore_role_keywords
+                            or _matches_job(
+                                str(row.get("title", "")),
+                                str(row.get("description", "")),
+                                role_terms,
+                            )
+                        ]
+                        rows.extend(
+                            fallback_rows[
+                                : min(
+                                    company_limit,
+                                    results_wanted - len(rows),
+                                )
+                            ]
+                        )
+                    continue
                 pages_read = 0
                 jobs_before = len(rows)
+                page.set_default_timeout(int(company_timeout * 1000))
                 search_queries = [portal_search_query]
                 if "intern" not in portal_search_query.casefold():
                     search_queries.append("intern")
                 if verbose:
                     log.info("portal %s: starting at %s", company.name, company.careers_url)
                 for search_query in search_queries:
-                    if pages_read >= max_pages_per_company or len(rows) >= results_wanted:
+                    if (
+                        time.monotonic() >= company_deadline
+                        or
+                        pages_read >= max_pages_per_company
+                        or len(rows) - company_rows_before >= company_limit
+                        or len(rows) >= results_wanted
+                    ):
                         break
                     try:
                         page.goto(
                             company.careers_url,
                             wait_until="domcontentloaded",
-                            timeout=timeout,
+                            timeout=max(
+                                1,
+                                min(
+                                    timeout,
+                                    int((company_deadline - time.monotonic()) * 1000),
+                                ),
+                            ),
                         )
-                        page.wait_for_timeout(750)
-                        search_portal(page, company, search_query)
+                        remaining_ms = max(
+                            1,
+                            min(
+                                timeout,
+                                int((company_deadline - time.monotonic()) * 1000),
+                            ),
+                        )
+                        page.wait_for_timeout(min(750, remaining_ms))
+                        if _ats_type(urlsplit(company.careers_url).netloc) == "workday":
+                            page.locator(
+                                '[data-automation-id="keywordSearchInput"], '
+                                '[data-automation-id="jobTitle"], '
+                                'a[href*="/job/"]'
+                            ).first.wait_for(
+                                state="attached",
+                                timeout=min(remaining_ms, interaction_timeout),
+                            )
+                        search_portal(page, company, search_query, company_deadline)
+                    except PlaywrightTimeoutError:
+                        if verbose:
+                            log.warning(
+                                "portal %s: Playwright timeout; skipping company",
+                                company.name,
+                            )
+                        break
                     except Exception as exc:
                         if verbose:
                             log.warning(
@@ -671,35 +850,60 @@ def scrape_semiconductor_career_portals_playwright(
                                 exc,
                             )
                         continue
-                    while pages_read < max_pages_per_company and len(rows) < results_wanted:
-                        pages_read += 1
+                    try:
+                        while (
+                            time.monotonic() < company_deadline
+                            and pages_read < max_pages_per_company
+                            and len(rows) - company_rows_before < company_limit
+                            and len(rows) < results_wanted
+                        ):
+                            pages_read += 1
+                            if verbose:
+                                log.info(
+                                    "portal %s: scraped page %d/%d %s (query=%r)",
+                                    company.name,
+                                    pages_read,
+                                    max_pages_per_company,
+                                    page.url,
+                                    search_query,
+                                )
+                            html = page.content()
+                            rows.extend(
+                                _parse_portal_html(
+                                    html,
+                                    page.url,
+                                    company,
+                                    role_terms,
+                                    location_aliases,
+                                    len(rows) - company_rows_before,
+                                    min(company_limit, results_wanted - len(rows)),
+                                    ignore_role_keywords,
+                                )
+                            )
+                            rows = rows[:company_rows_before + company_limit]
+                            rows = rows[:results_wanted]
+                            if not next_page(page, company_deadline):
+                                break
+                            if delay:
+                                time.sleep(
+                                    min(
+                                        delay,
+                                        max(0, company_deadline - time.monotonic()),
+                                    )
+                                )
+                    except PlaywrightTimeoutError:
                         if verbose:
-                            log.info(
-                                "portal %s: scraped page %d/%d %s (query=%r)",
+                            log.warning(
+                                "portal %s: Playwright timeout; skipping company",
                                 company.name,
-                                pages_read,
-                                max_pages_per_company,
-                                page.url,
-                                search_query,
                             )
-                        html = page.content()
-                        rows.extend(
-                            _parse_portal_html(
-                                html,
-                                page.url,
-                                company,
-                                role_terms,
-                                location_aliases,
-                                len(rows),
-                                results_wanted,
-                                ignore_role_keywords,
-                            )
-                        )
-                        rows = rows[:results_wanted]
-                        if not next_page(page):
-                            break
-                        if delay:
-                            time.sleep(delay)
+                        break
+                if time.monotonic() >= company_deadline and verbose:
+                    log.warning(
+                        "portal %s: skipped after %.1f-second company timeout",
+                        company.name,
+                        company_timeout,
+                    )
                 if verbose:
                     log.info(
                         "portal %s: finished; pages=%d, jobs=%d",
@@ -708,8 +912,17 @@ def scrape_semiconductor_career_portals_playwright(
                         len(rows) - jobs_before,
                     )
         finally:
-            context.close()
-            browser.close()
+            for resource, name in (
+                (page, "page"),
+                (context, "browser context"),
+                (browser, "browser"),
+            ):
+                try:
+                    resource.close()
+                except KeyboardInterrupt:
+                    log.warning("Interrupted while closing Playwright %s", name)
+                except Exception as exc:
+                    log.warning("Failed to close Playwright %s: %s", name, exc)
 
     if fallback_to_job_boards and len(rows) < results_wanted:
         from jobspy import scrape_semiconductor_career_portals
@@ -860,12 +1073,23 @@ def _parse_rendered_job_links(
         job_url = requests.compat.urljoin(page_url, href)
         path = urlsplit(job_url).path.casefold()
         classes = " ".join(anchor.get("class", [])).casefold()
+        is_workday_job_title = (
+            anchor.get("data-automation-id") == "jobTitle"
+        )
         if not (
-            any(term in path for term in ("/job", "/jobs", "jobposting", "requisition"))
+            is_workday_job_title
+            or any(
+                term in path
+                for term in ("/job", "/jobs", "jobposting", "requisition")
+            )
             or any(term in classes for term in ("job", "posting", "requisition"))
         ):
             continue
         card = anchor.find_parent(["article", "li"])
+        if card is None and is_workday_job_title:
+            card = anchor.find_parent(
+                attrs={"data-automation-id": "responsiveCard"}
+            )
         if card is None:
             for parent in anchor.parents:
                 parent_classes = " ".join(parent.get("class", [])).casefold()
