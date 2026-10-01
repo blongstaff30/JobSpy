@@ -182,11 +182,11 @@ Workday pages are loaded and searched through Playwright like the other
 portals; the crawler recognizes Workday's `keywordSearchInput`, `searchButton`,
 and `jobTitle` elements while keyword-file filtering is applied to rendered
 postings.
-Each company also has a 30-second timeout by default so a stalled or oversized portal is
-skipped and scraping can continue; override it with `company_timeout`.
-Interactive locator checks use a separate 2-second timeout by default so
-missing search or pagination controls do not block on the full navigation
-timeout; override it with `interaction_timeout`.
+Each company has a 60-second timeout by default so slower portals have time to
+render before a stalled or oversized portal is skipped; override it with
+`company_timeout`. Page navigation uses a 45-second Playwright timeout by
+default, and interactive locator checks use a separate 10-second timeout;
+override them with `timeout` and `interaction_timeout`.
 Set `verbose=True` to enable per-company INFO diagnostics; the default
 `verbose=False` (or `--no-verbose` in a wrapper CLI) suppresses those blocks.
 Public-board fallback remains opt-in.

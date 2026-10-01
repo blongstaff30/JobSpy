@@ -24,7 +24,7 @@ def scrape_company(company_name: str, result_queue) -> None:
             results_wanted=1,
             results_wanted_per_company=1,
             max_pages_per_company=5,
-            company_timeout=30.0,
+            company_timeout=60.0,
             delay=1.0,
             fallback_to_job_boards=False,
             verbose=True,
@@ -50,9 +50,9 @@ def main() -> None:
             args=(site["company"], result_queue),
         )
         process.start()
-        process.join(35)
+        process.join(65)
         if process.is_alive():
-            print(f"Skipping {site['company']} after 30-second timeout.", flush=True)
+            print(f"Skipping {site['company']} after 60-second timeout.", flush=True)
             process.terminate()
             process.join(5)
             continue
