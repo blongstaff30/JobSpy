@@ -21,6 +21,7 @@ log = logging.getLogger("JobSpy:Semiconductor")
 
 ATS_HOSTS = {
     "myworkdayjobs.com": "workday",
+    "myworkdaysite.com": "workday",
     "greenhouse.io": "greenhouse",
     "lever.co": "lever",
 }
@@ -32,6 +33,29 @@ def _ats_type(host: str) -> str | None:
         if host == suffix or host.endswith(f".{suffix}"):
             return ats_type
     return None
+
+
+def _workday_api_endpoint(endpoint: str) -> str | None:
+    """Build a Workday CXS jobs endpoint from either public URL format."""
+    parts = urlsplit(endpoint)
+    host_parts = parts.netloc.casefold().split(".")
+    if "myworkdaysite.com" in parts.netloc.casefold():
+        path_parts = [part for part in parts.path.strip("/").split("/") if part]
+        if len(path_parts) < 3 or path_parts[0].casefold() != "recruiting":
+            return None
+        tenant, site = path_parts[1], path_parts[2]
+    else:
+        if len(host_parts) < 3:
+            return None
+        tenant = host_parts[0]
+        path_parts = [part for part in parts.path.strip("/").split("/") if part]
+        site_parts = [part for part in path_parts if part.casefold() not in {
+            "en-us", "en_us", "en-gb", "en_gb"
+        }]
+        if not site_parts:
+            return None
+        site = site_parts[0]
+    return f"{parts.scheme}://{parts.netloc}/wday/cxs/{tenant}/{site}/jobs"
 
 
 def _matches_job(title: str, description: str, role_terms: list[str]) -> bool:
@@ -71,6 +95,7 @@ def _ats_jobs(
     role_terms: list[str],
     location_aliases: tuple[str, ...],
     session: requests.Session,
+    search_query: str | None = None,
 ) -> list[dict[str, object]]:
     """Fetch jobs from a discovered public ATS endpoint."""
     host = urlsplit(endpoint).netloc.casefold().removeprefix("www.")
@@ -93,21 +118,21 @@ def _ats_jobs(
         response.raise_for_status()
         postings = response.json()
     elif ats_type == "workday":
-        parts = urlsplit(endpoint)
-        host_parts = parts.netloc.split(".")
-        if len(host_parts) < 3:
-            return []
-        tenant = host_parts[0]
-        site = parts.path.strip("/").split("/")[0]
-        if not site:
+        api_endpoint = _workday_api_endpoint(endpoint)
+        if not api_endpoint:
             return []
         response = session.post(
-            f"{parts.scheme}://{parts.netloc}/wday/cxs/{tenant}/{site}/jobs",
+            api_endpoint,
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Referer": endpoint,
+            },
             json={
                 "appliedFacets": {},
-                "limit": 20,
+                "limit": 100,
                 "offset": 0,
-                "searchText": " ".join(role_terms),
+                "searchText": search_query or " ".join(role_terms),
             },
         )
         response.raise_for_status()
@@ -122,6 +147,8 @@ def _ats_jobs(
         location = posting.get("location")
         if isinstance(location, dict):
             location = location.get("name") or location.get("city")
+        if not location:
+            location = posting.get("locationsText") or posting.get("locationText")
         location = str(location or "")
         if not _matches_job(title, description, role_terms):
             continue
@@ -138,7 +165,7 @@ def _ats_jobs(
         if not job_url:
             continue
         if posting.get("externalPath") and not job_url.startswith("http"):
-            job_url = f"{urlsplit(endpoint).scheme}://{urlsplit(endpoint).netloc}{job_url}"
+            job_url = requests.compat.urljoin(endpoint, job_url)
         rows.append(
             {
                 "site": f"company_portal_{ats_type}",
@@ -388,6 +415,9 @@ def scrape_semiconductor_career_portals(
             pages_read += 1
             soup = BeautifulSoup(response.text, "html.parser")
             ats_endpoints: dict[str, str] = {}
+            direct_ats = _ats_type(urlsplit(response.url).netloc)
+            if direct_ats:
+                ats_endpoints[direct_ats] = response.url
             for anchor in soup.select("a[href]"):
                 child_url = requests.compat.urljoin(response.url, anchor["href"])
                 ats_type = _ats_type(urlsplit(child_url).netloc)
@@ -402,6 +432,7 @@ def scrape_semiconductor_career_portals(
                         role_terms,
                         location_aliases,
                         session,
+                        search_query=role,
                     )
                 except (requests.RequestException, ValueError):
                     ats_rows = []
@@ -756,6 +787,30 @@ def scrape_semiconductor_career_portals_playwright(
                 pages_read = 0
                 jobs_before = len(rows)
                 page.set_default_timeout(int(company_timeout * 1000))
+                direct_ats = _ats_type(urlsplit(company.careers_url).netloc)
+                if direct_ats:
+                    try:
+                        ats_rows = _ats_jobs(
+                            direct_ats,
+                            company.careers_url,
+                            company,
+                            role_terms,
+                            location_aliases,
+                            requests.Session(),
+                            search_query=portal_search_query,
+                        )
+                    except (requests.RequestException, ValueError):
+                        ats_rows = []
+                    rows.extend(
+                        ats_rows[
+                            : min(
+                                company_limit,
+                                results_wanted - len(rows),
+                            )
+                        ]
+                    )
+                    if len(rows) - company_rows_before >= company_limit:
+                        continue
                 search_queries = [portal_search_query]
                 if "intern" not in portal_search_query.casefold():
                     search_queries.append("intern")
