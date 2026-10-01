@@ -33,7 +33,7 @@ playwright = ["playwright>=1.45.0"]
 
 [tool.poetry]
 packages = [{ include = "jobspy" }]
-include = ["career_sites.txt"]
+include = [{ path = "jobspy/career_sites.txt", format = ["sdist", "wheel"] }]
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "*"

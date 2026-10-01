@@ -44,7 +44,7 @@ jobs.to_csv("jobs.csv", quoting=csv.QUOTE_NONNUMERIC, escapechar="\\", index=Fal
 ### Semiconductor companies
 
 JobSpy loads 50 major semiconductor manufacturers, equipment suppliers, and EDA
-vendors from the root-level `career_sites.txt` file. Each entry includes its
+vendors from the bundled `jobspy/career_sites.txt` file. Each entry includes its
 official careers page and generated LinkedIn, Indeed, Glassdoor, and Google
 job-board URLs:
 
@@ -126,7 +126,7 @@ jobs = scrape_semiconductor_career_portals_playwright(
 )
 ```
 
-The default portal list is the root-level `career_sites.txt` file. To use a
+The default portal list is the bundled `jobspy/career_sites.txt` file. To use a
 different lightweight list, provide another UTF-8 text file with one URL per
 line. You can optionally provide a display name before a pipe:
 

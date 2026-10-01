@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib.resources import files
 import json
 import logging
 from pathlib import Path
@@ -184,11 +185,16 @@ class SemiconductorCompany:
         }
 
 
-def _load_career_sites_file(path: str | Path) -> tuple[SemiconductorCompany, ...]:
+def _load_career_sites_file(path: str | Path | object) -> tuple[SemiconductorCompany, ...]:
     """Load ``Company Name | careers URL`` entries from a small text file."""
+    if hasattr(path, "read_text"):
+        content = path.read_text(encoding="utf-8")
+    else:
+        content = Path(path).read_text(encoding="utf-8")
+
     companies: list[SemiconductorCompany] = []
     seen_urls: set[str] = set()
-    for line_number, raw_line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), 1):
+    for line_number, raw_line in enumerate(content.splitlines(), 1):
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
@@ -211,7 +217,7 @@ def _load_career_sites_file(path: str | Path) -> tuple[SemiconductorCompany, ...
     return tuple(companies)
 
 
-DEFAULT_CAREER_SITES_FILE = Path(__file__).resolve().parent.parent / "career_sites.txt"
+DEFAULT_CAREER_SITES_FILE = files("jobspy").joinpath("career_sites.txt")
 SEMICONDUCTOR_COMPANIES: tuple[SemiconductorCompany, ...] = _load_career_sites_file(
     DEFAULT_CAREER_SITES_FILE
 )
