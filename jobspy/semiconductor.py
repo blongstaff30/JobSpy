@@ -543,6 +543,7 @@ def scrape_semiconductor_career_portals_playwright(
     results_wanted_per_company: int | None = None,
     companies: list[str] | tuple[str, ...] | None = None,
     max_pages_per_company: int = 100,
+    company_timeout: float = 60.0,
     timeout: int = 20_000,
     delay: float = 1.0,
     user_agent: str = (
@@ -576,6 +577,8 @@ def scrape_semiconductor_career_portals_playwright(
         raise ValueError("results_wanted must be at least 1")
     if results_wanted_per_company is not None and results_wanted_per_company < 1:
         raise ValueError("results_wanted_per_company must be at least 1")
+    if company_timeout <= 0:
+        raise ValueError("company_timeout must be greater than 0")
 
     selected = (
         _load_career_sites_file(career_sites_file)
@@ -692,6 +695,7 @@ def scrape_semiconductor_career_portals_playwright(
             for company in selected:
                 company_rows_before = len(rows)
                 company_limit = results_wanted_per_company or results_wanted
+                company_deadline = time.monotonic() + company_timeout
                 if len(rows) >= results_wanted:
                     break
                 if company.careers_url.casefold() == "default":
@@ -731,6 +735,8 @@ def scrape_semiconductor_career_portals_playwright(
                     log.info("portal %s: starting at %s", company.name, company.careers_url)
                 for search_query in search_queries:
                     if (
+                        time.monotonic() >= company_deadline
+                        or
                         pages_read >= max_pages_per_company
                         or len(rows) - company_rows_before >= company_limit
                         or len(rows) >= results_wanted
@@ -754,6 +760,8 @@ def scrape_semiconductor_career_portals_playwright(
                             )
                         continue
                     while (
+                        time.monotonic() < company_deadline
+                        and
                         pages_read < max_pages_per_company
                         and len(rows) - company_rows_before < company_limit
                         and len(rows) < results_wanted
@@ -786,7 +794,13 @@ def scrape_semiconductor_career_portals_playwright(
                         if not next_page(page):
                             break
                         if delay:
-                            time.sleep(delay)
+                            time.sleep(min(delay, max(0, company_deadline - time.monotonic())))
+                if time.monotonic() >= company_deadline and verbose:
+                    log.warning(
+                        "portal %s: skipped after %.1f-second company timeout",
+                        company.name,
+                        company_timeout,
+                    )
                 if verbose:
                     log.info(
                         "portal %s: finished; pages=%d, jobs=%d",
