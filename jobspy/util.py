@@ -97,6 +97,8 @@ class TLSRotating(RotatingProxySession, tls_client.Session):
                 self.proxies = next_proxy
             else:
                 self.proxies = {}
+        if "timeout" in kwargs and "timeout_seconds" not in kwargs:
+            kwargs["timeout_seconds"] = kwargs.pop("timeout")
         response = tls_client.Session.execute_request(self, *args, **kwargs)
         response.ok = response.status_code in range(200, 400)
         return response

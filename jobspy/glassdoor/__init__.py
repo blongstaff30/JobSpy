@@ -113,7 +113,7 @@ class Glassdoor(Scraper):
             payload = self._add_payload(location_id, location_type, page_num, cursor)
             response = self.session.post(
                 f"{self.base_url}/graph",
-                timeout_seconds=15,
+                timeout_seconds=getattr(self.scraper_input, "request_timeout", 20),
                 data=payload,
             )
             if response.status_code != 200:
@@ -153,7 +153,10 @@ class Glassdoor(Scraper):
         """
         Fetches csrf token needed for API by visiting a generic page
         """
-        res = self.session.get(f"{self.base_url}/Job/computer-science-jobs.htm")
+        res = self.session.get(
+            f"{self.base_url}/Job/computer-science-jobs.htm",
+            timeout=getattr(self.scraper_input, "request_timeout", 20),
+        )
         pattern = r'"token":\s*"([^"]+)"'
         matches = re.findall(pattern, res.text)
         token = None
@@ -259,7 +262,10 @@ class Glassdoor(Scraper):
         if not location or is_remote:
             return "11047", "STATE"  # remote options
         url = f"{self.base_url}/findPopularLocationAjax.htm?maxLocationsToReturn=10&term={location}"
-        res = self.session.get(url)
+        res = self.session.get(
+            url,
+            timeout=getattr(self.scraper_input, "request_timeout", 20),
+        )
         if res.status_code != 200:
             if res.status_code == 429:
                 err = f"429 Response - Blocked by Glassdoor for too many requests"

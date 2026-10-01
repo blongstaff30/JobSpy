@@ -87,7 +87,10 @@ class BaytScraper(Scraper):
         """
         try:
             url = f"{self.base_url}/en/international/jobs/{query}-jobs/?page={page}"
-            response = self.session.get(url)
+            response = self.session.get(
+                url,
+                timeout=getattr(self.scraper_input, "request_timeout", 20),
+            )
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
             job_listings = soup.find_all("li", attrs={"data-js-job": ""})

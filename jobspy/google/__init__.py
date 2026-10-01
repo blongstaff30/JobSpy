@@ -121,7 +121,12 @@ class Google(Scraper):
             query = self.scraper_input.google_search_term
 
         params = {"q": query, "udm": "8"}
-        response = self.session.get(self.url, headers=headers_initial, params=params)
+        response = self.session.get(
+            self.url,
+            headers=headers_initial,
+            params=params,
+            timeout=getattr(self.scraper_input, "request_timeout", 20),
+        )
 
         pattern_fc = r'<div jsname="Yust4d"[^>]+data-async-fc="([^"]+)"'
         match_fc = re.search(pattern_fc, response.text)
@@ -136,7 +141,12 @@ class Google(Scraper):
 
     def _get_jobs_next_page(self, forward_cursor: str) -> Tuple[list[JobPost], str]:
         params = {"fc": [forward_cursor], "fcv": ["3"], "async": [async_param]}
-        response = self.session.get(self.jobs_url, headers=headers_jobs, params=params)
+        response = self.session.get(
+            self.jobs_url,
+            headers=headers_jobs,
+            params=params,
+            timeout=getattr(self.scraper_input, "request_timeout", 20),
+        )
         return self._parse_jobs(response.text)
 
     def _parse_jobs(self, job_data: str) -> Tuple[list[JobPost], str]:

@@ -96,7 +96,11 @@ class ZipRecruiter(Scraper):
         if continue_token:
             params["continue_from"] = continue_token
         try:
-            res = self.session.get(f"{self.api_url}/jobs-app/jobs", params=params)
+            res = self.session.get(
+                f"{self.api_url}/jobs-app/jobs",
+                params=params,
+                timeout=getattr(self.scraper_input, "request_timeout", 20),
+            )
             if res.status_code not in range(200, 400):
                 if res.status_code == 429:
                     err = "429 Response - Blocked by ZipRecruiter for too many requests"
@@ -177,7 +181,11 @@ class ZipRecruiter(Scraper):
         )
 
     def _get_descr(self, job_url):
-        res = self.session.get(job_url, allow_redirects=True)
+        res = self.session.get(
+            job_url,
+            allow_redirects=True,
+            timeout=getattr(self.scraper_input, "request_timeout", 20),
+        )
         description_full = job_url_direct = None
         if res.ok:
             soup = BeautifulSoup(res.text, "html.parser")
@@ -216,4 +224,8 @@ class ZipRecruiter(Scraper):
         Sends a session event to the API with device properties.
         """
         url = f"{self.api_url}/jobs-app/event"
-        self.session.post(url, data=get_cookie_data)
+        self.session.post(
+            url,
+            data=get_cookie_data,
+            timeout=getattr(self.scraper_input, "request_timeout", 20),
+        )

@@ -1172,6 +1172,7 @@ def scrape_semiconductor_jobs(
     site_name: str | list[str] | None = None,
     location: str | None = None,
     results_wanted: int = 15,
+    ignore_company: bool = False,
     **kwargs,
 ) -> pd.DataFrame:
     """Search JobSpy-supported boards for a role at semiconductor companies.
@@ -1181,6 +1182,15 @@ def scrape_semiconductor_jobs(
     schema and add ``target_company`` and ``target_careers_url``.
     """
     from jobspy import scrape_jobs
+
+    if ignore_company:
+        return scrape_jobs(
+            site_name=site_name,
+            search_term=role,
+            location=location,
+            results_wanted=results_wanted,
+            **kwargs,
+        )
 
     selected = SEMICONDUCTOR_COMPANIES
     if companies is not None:
