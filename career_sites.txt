@@ -2,7 +2,7 @@
 TSMC | https://careers.tsmc.com/en_US/careers/SearchJobs
 Intel | https://intel.wd1.myworkdayjobs.com/External
 Samsung Electronics | https://sec.wd3.myworkdayjobs.com/Samsung_Careers
-SK hynix | greenhouse
+SK hynix | default
 Micron Technology | https://careers.micron.com/
 Qualcomm | https://careers.qualcomm.com/careers?start=0
 Broadcom | https://broadcom.wd1.myworkdayjobs.com/External_Career
