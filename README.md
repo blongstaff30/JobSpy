@@ -202,7 +202,7 @@ not from a Windows virtual environment. If Cloud Shell does not have Python
 version matching the Function App.
 
 ```bash
-git clone <repository-url> jobspy
+git clone https://github.com/blongstaff30/JobSpy/ jobspy
 cd jobspy
 
 python3.11 -m venv /tmp/jobspy-build
