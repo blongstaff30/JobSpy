@@ -138,8 +138,8 @@ when possible. Cloud Shell includes Azure CLI, Python, and storage tools.
 ```bash
 export LOCATION=northcentralus
 export RESOURCE_GROUP=<resource-group>
-export FUNCTION_APP=<globally-unique-function-app-name>
-export STORAGE_ACCOUNT=<globally-unique-storage-account-name>
+export FUNCTION_APP=<GLOBALLY-unique-function-app-name>
+export STORAGE_ACCOUNT=<GLOBALLY-unique-storage-account-name>
 export FILE_SHARE=jobspy-dependencies
 export RESULTS_SHARE=jobspy-results
 export DEPLOYMENT_STORAGE=<globally-unique-deployment-storage-name>
@@ -148,6 +148,7 @@ export DEPLOYMENT_STORAGE=<globally-unique-deployment-storage-name>
 Create the resource group, deployment storage, and Azure Files share:
 
 ```bash
+az provider register --namespace Microsoft.Compute
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
 
 az storage account create \
