@@ -100,12 +100,21 @@ App settings. The mounted share must contain the installed Python packages
 browser files. Keep `requirements.txt` in the deployment package as the
 dependency manifest, but do not run pip install during each function start.
 
-Deploy the application code with Flex Consumption:
+Create the Function App with its runtime stack defined in the creation command.
+For Flex Consumption, the runtime and Python version cannot be changed after
+the app is created. If the app already exists with the wrong runtime, create a
+new Function App with the desired settings:
 
 ```powershell
 az functionapp create --name <function-app-name> `
   --resource-group <resource-group> --storage-account <storage-account> `
-  --flexconsumption-location eastus --runtime python --runtime-version 3.11
+  --flexconsumption-location eastus `
+  --runtime python --runtime-version 3.11 --functions-version 4
+```
+
+Deploy the application code after the Function App has been created:
+
+```powershell
 az functionapp deployment source config-zip --name <function-app-name> `
   --resource-group <resource-group> --src <deployment.zip>
 az functionapp config appsettings set --name <function-app-name> `
@@ -177,8 +186,10 @@ az storage share-rm create \
   --quota 10
 ```
 
-Create the Flex Consumption Function App. The deployment storage account is
-used by the Functions platform; the dependency share is mounted separately.
+Create the Flex Consumption Function App with the runtime defined at creation.
+The runtime stack and Python version cannot be changed after this command. The
+deployment storage account is used by the Functions platform; the dependency
+share is mounted separately.
 
 ```bash
 az storage account create \
@@ -193,7 +204,8 @@ az functionapp create \
   --storage-account "$DEPLOYMENT_STORAGE" \
   --flexconsumption-location "$LOCATION" \
   --runtime python \
-  --runtime-version 3.11
+  --runtime-version 3.11 \
+  --functions-version 4
 ```
 
 Prepare the dependency share in Cloud Shell. Build the packages for Linux,
