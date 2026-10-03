@@ -145,6 +145,171 @@ memory allocation for the Playwright workload. Do not commit
 Vault. `Dockerfile` is retained for local/container-based testing but is not
 required for this Flex deployment.
 
+#### Complete setup from Azure Cloud Shell
+
+The following is a Cloud Shell-oriented sequence. Use **Bash** Cloud Shell,
+replace every value in angle brackets, and keep secrets out of shell history
+when possible. Cloud Shell includes Azure CLI, Python, and storage tools.
+
+```bash
+az login
+
+export LOCATION=eastus
+export RESOURCE_GROUP=<resource-group>
+export FUNCTION_APP=<globally-unique-function-app-name>
+export STORAGE_ACCOUNT=<globally-unique-storage-account-name>
+export FILE_SHARE=jobspy-dependencies
+export DEPLOYMENT_STORAGE=<globally-unique-deployment-storage-name>
+export TENANT_ID=<tenant-id>
+export CLIENT_ID=<client-id>
+export CLIENT_SECRET=<client-secret>
+export ONEDRIVE_USER=<onedrive-user-upn-or-object-id>
+```
+
+Create the resource group, deployment storage, and Azure Files share:
+
+```bash
+az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
+
+az storage account create \
+  --name "$STORAGE_ACCOUNT" \
+  --resource-group "$RESOURCE_GROUP" \
+  --location "$LOCATION" \
+  --sku Standard_LRS
+
+STORAGE_KEY=$(az storage account keys list \
+  --account-name "$STORAGE_ACCOUNT" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query '[0].value' -o tsv)
+
+az storage share-rm create \
+  --resource-group "$RESOURCE_GROUP" \
+  --storage-account "$STORAGE_ACCOUNT" \
+  --name "$FILE_SHARE" \
+  --quota 10
+```
+
+Create the Flex Consumption Function App. The deployment storage account is
+used by the Functions platform; the dependency share is mounted separately.
+
+```bash
+az storage account create \
+  --name "$DEPLOYMENT_STORAGE" \
+  --resource-group "$RESOURCE_GROUP" \
+  --location "$LOCATION" \
+  --sku Standard_LRS
+
+az functionapp create \
+  --name "$FUNCTION_APP" \
+  --resource-group "$RESOURCE_GROUP" \
+  --storage-account "$DEPLOYMENT_STORAGE" \
+  --flexconsumption-location "$LOCATION" \
+  --runtime python \
+  --runtime-version 3.11
+```
+
+Prepare the dependency share in Cloud Shell. Build the packages for Linux,
+not from a Windows virtual environment. If Cloud Shell does not have Python
+3.11 available, use a Linux CI runner or Cloud Shell's supported Python
+version matching the Function App.
+
+```bash
+git clone <repository-url> jobspy
+cd jobspy
+
+python3.11 -m venv /tmp/jobspy-build
+source /tmp/jobspy-build/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt --target /tmp/jobspy-dependencies
+python -m playwright install firefox
+
+mkdir -p /tmp/jobspy-dependencies/ms-playwright
+cp -a "${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}/." \
+  /tmp/jobspy-dependencies/ms-playwright/
+
+az storage file upload-batch \
+  --account-name "$STORAGE_ACCOUNT" \
+  --account-key "$STORAGE_KEY" \
+  --destination "$FILE_SHARE" \
+  --source /tmp/jobspy-dependencies
+```
+
+Configure the Azure Files mount in the Function App. The exact mount command
+can vary with Azure CLI extension support; the portal path is
+**Function App > Settings > Storage mounts > Add**. Set:
+
+```text
+Name: dependencies
+Mount path: /mnt/dependencies
+Storage account: <STORAGE_ACCOUNT>
+File share: jobspy-dependencies
+Access: storage account key
+```
+
+Then configure the application settings:
+
+```bash
+az functionapp config appsettings set \
+  --name "$FUNCTION_APP" \
+  --resource-group "$RESOURCE_GROUP" \
+  --settings \
+  FUNCTIONS_WORKER_RUNTIME=python \
+  AZURE_FILES_DEPENDENCY_PATH=/mnt/dependencies \
+  PLAYWRIGHT_BROWSERS_PATH=/mnt/dependencies/ms-playwright \
+  AZURE_TENANT_ID="$TENANT_ID" \
+  AZURE_CLIENT_ID="$CLIENT_ID" \
+  AZURE_CLIENT_SECRET="$CLIENT_SECRET" \
+  ONEDRIVE_USER="$ONEDRIVE_USER" \
+  ONEDRIVE_FOLDER=JobSpy
+```
+
+Create the OneDrive `JobSpy` folder before the first invocation. Package and
+deploy only the function code and project data; do not include `.venv` or the
+dependency directory in the deployment archive:
+
+```bash
+rm -rf /tmp/jobspy-deployment
+mkdir /tmp/jobspy-deployment
+cp function_app.py run_semiconductor_scrape.py keywords.txt career_sites.txt \
+  requirements.txt host.json /tmp/jobspy-deployment/
+cd /tmp/jobspy-deployment
+zip -r /tmp/jobspy.zip .
+
+az functionapp deployment source config-zip \
+  --name "$FUNCTION_APP" \
+  --resource-group "$RESOURCE_GROUP" \
+  --src /tmp/jobspy.zip
+```
+
+Retrieve the function key and invoke the scrape:
+
+```bash
+FUNCTION_KEY=$(az functionapp keys list \
+  --name "$FUNCTION_APP" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query 'functionKeys.default' -o tsv)
+
+curl -X POST \
+  "https://${FUNCTION_APP}.azurewebsites.net/api/scrape-semiconductor?code=${FUNCTION_KEY}"
+```
+
+Check execution logs from Cloud Shell:
+
+```bash
+az functionapp log deployment list \
+  --name "$FUNCTION_APP" \
+  --resource-group "$RESOURCE_GROUP"
+az monitor app-insights component show \
+  --resource-group "$RESOURCE_GROUP" \
+  --query '[].{name:name,connectionString:connectionString}'
+```
+
+If the mounted dependency share is not visible, verify the mount path,
+storage-account key, share name, and that the share contains `pandas`,
+`playwright`, and the `ms-playwright` browser directory. Never echo
+`CLIENT_SECRET` or commit it to the repository; use Function App settings or
+Key Vault.
+
 ### Semiconductor companies
 
 JobSpy loads 50 major semiconductor manufacturers, equipment suppliers, and EDA
