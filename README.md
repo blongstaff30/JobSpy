@@ -150,6 +150,7 @@ Create the resource group, deployment storage, and Azure Files share:
 ```bash
 az provider register --namespace Microsoft.Compute
 az provider register --namespace Microsoft.Web
+az provider register --namespace Microsoft.Insights
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
 
 az storage account create \
