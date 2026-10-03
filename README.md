@@ -222,22 +222,38 @@ az storage file upload-batch \
   --source /tmp/jobspy-dependencies
 ```
 
-Configure the Azure Files mount in the Function App. The exact mount command
-can vary with Azure CLI extension support; the portal path is
-**Function App > Settings > Storage mounts > Add**. Set:
+Mount both Azure Files shares with the Azure CLI. The `custom-id` values must
+be unique within the Function App:
 
-```text
-Name: dependencies
-Mount path: /mnt/dependencies
-Storage account: <STORAGE_ACCOUNT>
-File share: jobspy-dependencies
-Access: storage account key
+```bash
+az webapp config storage-account add \
+  --name "$FUNCTION_APP" \
+  --resource-group "$RESOURCE_GROUP" \
+  --custom-id dependencies \
+  --storage-type AzureFiles \
+  --account-name "$STORAGE_ACCOUNT" \
+  --share-name "$FILE_SHARE" \
+  --access-key "$STORAGE_KEY" \
+  --mount-path /mnt/dependencies
 
-Name: results
-Mount path: /mnt/jobspy-data
-Storage account: <STORAGE_ACCOUNT>
-File share: jobspy-results
-Access: storage account key
+az webapp config storage-account add \
+  --name "$FUNCTION_APP" \
+  --resource-group "$RESOURCE_GROUP" \
+  --custom-id results \
+  --storage-type AzureFiles \
+  --account-name "$STORAGE_ACCOUNT" \
+  --share-name "$RESULTS_SHARE" \
+  --access-key "$STORAGE_KEY" \
+  --mount-path /mnt/jobspy-data
+```
+
+Verify that both mounts were registered:
+
+```bash
+az webapp config storage-account list \
+  --name "$FUNCTION_APP" \
+  --resource-group "$RESOURCE_GROUP" \
+  --output table
 ```
 
 Then configure the application settings:
