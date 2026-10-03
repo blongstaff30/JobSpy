@@ -136,8 +136,6 @@ replace every value in angle brackets, and keep secrets out of shell history
 when possible. Cloud Shell includes Azure CLI, Python, and storage tools.
 
 ```bash
-az login
-
 export LOCATION=northcentralus
 export RESOURCE_GROUP=<resource-group>
 export FUNCTION_APP=<globally-unique-function-app-name>
