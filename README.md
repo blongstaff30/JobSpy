@@ -275,7 +275,6 @@ az functionapp config appsettings set \
   --name "$FUNCTION_APP" \
   --resource-group "$RESOURCE_GROUP" \
   --settings \
-  FUNCTIONS_WORKER_RUNTIME=python \
   AZURE_FILES_DEPENDENCY_PATH=/mnt/dependencies \
   PLAYWRIGHT_BROWSERS_PATH=/mnt/dependencies/ms-playwright \
   JOBSPY_OUTPUT_DIRECTORY=/mnt/jobspy-data
