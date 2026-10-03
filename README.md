@@ -138,7 +138,7 @@ when possible. Cloud Shell includes Azure CLI, Python, and storage tools.
 ```bash
 az login
 
-export LOCATION=eastus
+export LOCATION=northcentralus
 export RESOURCE_GROUP=<resource-group>
 export FUNCTION_APP=<globally-unique-function-app-name>
 export STORAGE_ACCOUNT=<globally-unique-storage-account-name>
