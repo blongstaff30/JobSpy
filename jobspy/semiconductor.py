@@ -1173,6 +1173,7 @@ def scrape_semiconductor_jobs(
     location: str | None = None,
     results_wanted: int = 15,
     ignore_company: bool = False,
+    keywords_file: str | Path | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Search JobSpy-supported boards for a role at semiconductor companies.
@@ -1183,14 +1184,34 @@ def scrape_semiconductor_jobs(
     """
     from jobspy import scrape_jobs
 
+    keyword_terms = (
+        load_semiconductor_keywords(keywords_file)
+        if keywords_file is not None
+        else None
+    )
+
+    def filter_keywords(jobs: pd.DataFrame) -> pd.DataFrame:
+        if keyword_terms is None or jobs.empty:
+            return jobs
+        return jobs[
+            jobs.apply(
+                lambda row: _matches_job(
+                    str(row.get("title") or ""),
+                    str(row.get("description") or ""),
+                    keyword_terms,
+                ),
+                axis=1,
+            )
+        ].reset_index(drop=True)
+
     if ignore_company:
-        return scrape_jobs(
+        return filter_keywords(scrape_jobs(
             site_name=site_name,
             search_term=role,
             location=location,
             results_wanted=results_wanted,
             **kwargs,
-        )
+        ))
 
     selected = SEMICONDUCTOR_COMPANIES
     if companies is not None:
@@ -1212,6 +1233,7 @@ def scrape_semiconductor_jobs(
             results_wanted=results_wanted,
             **kwargs,
         )
+        jobs = filter_keywords(jobs)
         if not jobs.empty:
             jobs = jobs.copy()
             jobs["target_company"] = company.name

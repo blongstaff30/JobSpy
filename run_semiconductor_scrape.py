@@ -22,16 +22,30 @@ BOARD_SITES = [
     "google",
 ]
 KEYWORDS_FILE = Path(__file__).with_name("keywords.txt")
-OUTPUT_FILE = Path(__file__).with_name("semiconductor_jobs.txt")
+
+
+def _desktop_output_file() -> Path:
+    """Use the user's OneDrive Desktop folder."""
+    desktop = Path.home() / "OneDrive" / "Desktop"
+    desktop.mkdir(parents=True, exist_ok=True)
+    return desktop / "semiconductor_jobs.txt"
+
+
+OUTPUT_FILE = _desktop_output_file()
 
 
 def _format_results(title: str, jobs: pd.DataFrame) -> str:
     if jobs.empty:
         return f"{title}\nNo jobs found.\n"
-    # A fixed-width DataFrame is unreadable once descriptions or URLs are
-    # wide. TSV keeps every field while allowing spreadsheet and text editors
-    # to display the columns without wrapping them into one another.
-    return f"{title}\n{jobs.to_csv(sep='\t', index=False, lineterminator='\n')}"
+    output = pd.DataFrame(
+        {
+            "job_title": jobs.get("title", ""),
+            "company": jobs.get("company", jobs.get("company_name", "")),
+            "location": jobs.get("location", ""),
+            "url": jobs.get("job_url", jobs.get("job_url_direct", "")),
+        }
+    )
+    return f"{title}\n{output.to_csv(sep='\t', index=False, lineterminator='\n')}"
 
 
 def main() -> None:
@@ -42,6 +56,7 @@ def main() -> None:
         results_wanted=RESULT_LIMIT,
         location=None,
         ignore_company=True,
+        keywords_file=KEYWORDS_FILE,
         request_timeout=5,
     )
     board_output = _format_results("Results from scrape_semiconductor_jobs()", board_jobs)
