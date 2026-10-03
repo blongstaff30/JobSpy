@@ -41,6 +41,110 @@ print(jobs.head())
 jobs.to_csv("jobs.csv", quoting=csv.QUOTE_NONNUMERIC, escapechar="\\", index=False) # to_excel
 ```
 
+### Azure Functions deployment
+
+The semiconductor runner can be deployed as an Azure Function with
+`function_app.py`. The function is HTTP-triggered at
+`/api/scrape-semiconductor` and stores these files in OneDrive:
+
+- `semiconductor_jobs.json`
+- `semiconductor_jobs_previous.json`
+- `semiconductor_jobs_difference.json`
+
+Azure cannot access a computer's local OneDrive folder. This deployment uses
+Microsoft Graph to write to the OneDrive belonging to `ONEDRIVE_USER`.
+
+#### Microsoft Entra ID setup
+
+1. Create an app registration in Microsoft Entra ID.
+2. Add Microsoft Graph **application** permission `Files.ReadWrite.All`.
+3. Grant admin consent for the permission.
+4. Create a client secret.
+5. Record the tenant ID, client ID, and secret.
+
+The Function App must define these application settings:
+
+```text
+FUNCTIONS_WORKER_RUNTIME=python
+AZURE_TENANT_ID=<directory/tenant ID>
+AZURE_CLIENT_ID=<application/client ID>
+AZURE_CLIENT_SECRET=<client secret>
+ONEDRIVE_USER=<OneDrive user's UPN or object ID>
+ONEDRIVE_FOLDER=JobSpy
+```
+
+`ONEDRIVE_FOLDER` is optional and defaults to `JobSpy`. The folder is created
+by Microsoft Graph only when the parent folder already exists; create the
+folder once in OneDrive before the first run.
+
+#### Flex Consumption with an Azure Files dependency mount
+
+Use a Linux Flex Consumption Function App and mount an Azure Files share at
+`/mnt/dependencies`. The function inserts that path into `sys.path` before
+loading pandas, Playwright, and the other project dependencies. Set
+`AZURE_FILES_DEPENDENCY_PATH` only if you choose a different mount path.
+
+Build the dependency share with the same Linux/Python version used by the
+Function App. Do not copy the Windows `.venv` directory. From a Linux
+environment (Cloud Shell, WSL, or a Linux CI runner), install dependencies
+directly into the share:
+
+```bash
+python3.11 -m venv /tmp/jobspy-build
+source /tmp/jobspy-build/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt --target /tmp/jobspy-dependencies
+python -m playwright install firefox
+mkdir -p /tmp/jobspy-dependencies/ms-playwright
+cp -a "${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}/." \
+  /tmp/jobspy-dependencies/ms-playwright/
+```
+
+Upload the contents of `/tmp/jobspy-dependencies` to the root of the Azure
+Files share, then configure the Function App Storage mount with:
+
+```text
+Mount path: /mnt/dependencies
+```
+
+Set `PLAYWRIGHT_BROWSERS_PATH=/mnt/dependencies/ms-playwright` in the Function
+App settings. The mounted share must contain the installed Python packages
+(`pandas`, `playwright`, `requests`, and their dependencies) and the Firefox
+browser files. Keep `requirements.txt` in the deployment package as the
+dependency manifest, but do not run pip install during each function start.
+
+Deploy the application code with Flex Consumption:
+
+```powershell
+az functionapp create --name <function-app-name> `
+  --resource-group <resource-group> --storage-account <storage-account> `
+  --flexconsumption-location eastus --runtime python --runtime-version 3.11
+az functionapp deployment source config-zip --name <function-app-name> `
+  --resource-group <resource-group> --src <deployment.zip>
+az functionapp config appsettings set --name <function-app-name> `
+  --resource-group <resource-group> --settings `
+  FUNCTIONS_WORKER_RUNTIME=python `
+  AZURE_FILES_DEPENDENCY_PATH=/mnt/dependencies `
+  PLAYWRIGHT_BROWSERS_PATH=/mnt/dependencies/ms-playwright `
+  AZURE_TENANT_ID=<tenant-id> AZURE_CLIENT_ID=<client-id> `
+  AZURE_CLIENT_SECRET=<client-secret> ONEDRIVE_USER=<user> ONEDRIVE_FOLDER=JobSpy
+```
+
+Configure the Azure Files mount in the Function App's **Storage mounts**
+settings. Use a share in the same region and grant the Function App identity
+the required storage permissions. Test the mount before invoking the function.
+The endpoint uses the Function App's function key:
+
+```powershell
+curl -X POST "https://<function-app-name>.azurewebsites.net/api/scrape-semiconductor?code=<function-key>"
+```
+
+The scrape can take several minutes. Configure an appropriate Flex timeout and
+memory allocation for the Playwright workload. Do not commit
+`AZURE_CLIENT_SECRET`; store it in Function App application settings or Key
+Vault. `Dockerfile` is retained for local/container-based testing but is not
+required for this Flex deployment.
+
 ### Semiconductor companies
 
 JobSpy loads 50 major semiconductor manufacturers, equipment suppliers, and EDA
