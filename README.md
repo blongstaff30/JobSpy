@@ -142,13 +142,14 @@ export FUNCTION_APP=<GLOBALLY-unique-function-app-name>
 export STORAGE_ACCOUNT=<GLOBALLY-unique-storage-account-name>
 export FILE_SHARE=jobspy-dependencies
 export RESULTS_SHARE=jobspy-results
-export DEPLOYMENT_STORAGE=<globally-unique-deployment-storage-name>
+export DEPLOYMENT_STORAGE=<GLOBALLY-unique-deployment-storage-name>
 ```
 
 Create the resource group, deployment storage, and Azure Files share:
 
 ```bash
 az provider register --namespace Microsoft.Compute
+az provider register --namespace Microsoft.Web
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
 
 az storage account create \
