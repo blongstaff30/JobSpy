@@ -45,37 +45,24 @@ jobs.to_csv("jobs.csv", quoting=csv.QUOTE_NONNUMERIC, escapechar="\\", index=Fal
 
 The semiconductor runner can be deployed as an Azure Function with
 `function_app.py`. The function is HTTP-triggered at
-`/api/scrape-semiconductor` and stores these files in OneDrive:
+`/api/scrape-semiconductor` and stores these files in an Azure Files share:
 
 - `semiconductor_jobs.json`
 - `semiconductor_jobs_previous.json`
 - `semiconductor_jobs_difference.json`
 
-Azure cannot access a computer's local OneDrive folder. This deployment uses
-Microsoft Graph to write to the OneDrive belonging to `ONEDRIVE_USER`.
-
-#### Microsoft Entra ID setup
-
-1. Create an app registration in Microsoft Entra ID.
-2. Add Microsoft Graph **application** permission `Files.ReadWrite.All`.
-3. Grant admin consent for the permission.
-4. Create a client secret.
-5. Record the tenant ID, client ID, and secret.
-
 The Function App must define these application settings:
 
 ```text
 FUNCTIONS_WORKER_RUNTIME=python
-AZURE_TENANT_ID=<directory/tenant ID>
-AZURE_CLIENT_ID=<application/client ID>
-AZURE_CLIENT_SECRET=<client secret>
-ONEDRIVE_USER=<OneDrive user's UPN or object ID>
-ONEDRIVE_FOLDER=JobSpy
+AZURE_FILES_DEPENDENCY_PATH=/mnt/dependencies
+PLAYWRIGHT_BROWSERS_PATH=/mnt/dependencies/ms-playwright
+JOBSPY_OUTPUT_DIRECTORY=/mnt/jobspy-data
 ```
 
-`ONEDRIVE_FOLDER` is optional and defaults to `JobSpy`. The folder is created
-by Microsoft Graph only when the parent folder already exists; create the
-folder once in OneDrive before the first run.
+Mount the Azure Files share containing dependencies at `/mnt/dependencies`.
+Mount a writable Azure Files share for results at `/mnt/jobspy-data`. The
+results share preserves the previous snapshot between invocations.
 
 #### Flex Consumption with an Azure Files dependency mount
 
@@ -126,8 +113,7 @@ az functionapp config appsettings set --name <function-app-name> `
   FUNCTIONS_WORKER_RUNTIME=python `
   AZURE_FILES_DEPENDENCY_PATH=/mnt/dependencies `
   PLAYWRIGHT_BROWSERS_PATH=/mnt/dependencies/ms-playwright `
-  AZURE_TENANT_ID=<tenant-id> AZURE_CLIENT_ID=<client-id> `
-  AZURE_CLIENT_SECRET=<client-secret> ONEDRIVE_USER=<user> ONEDRIVE_FOLDER=JobSpy
+  JOBSPY_OUTPUT_DIRECTORY=/mnt/jobspy-data
 ```
 
 Configure the Azure Files mount in the Function App's **Storage mounts**
@@ -140,10 +126,8 @@ curl -X POST "https://<function-app-name>.azurewebsites.net/api/scrape-semicondu
 ```
 
 The scrape can take several minutes. Configure an appropriate Flex timeout and
-memory allocation for the Playwright workload. Do not commit
-`AZURE_CLIENT_SECRET`; store it in Function App application settings or Key
-Vault. `Dockerfile` is retained for local/container-based testing but is not
-required for this Flex deployment.
+memory allocation for the Playwright workload. `Dockerfile` is retained for
+local/container-based testing but is not required for this Flex deployment.
 
 #### Complete setup from Azure Cloud Shell
 
@@ -159,11 +143,8 @@ export RESOURCE_GROUP=<resource-group>
 export FUNCTION_APP=<globally-unique-function-app-name>
 export STORAGE_ACCOUNT=<globally-unique-storage-account-name>
 export FILE_SHARE=jobspy-dependencies
+export RESULTS_SHARE=jobspy-results
 export DEPLOYMENT_STORAGE=<globally-unique-deployment-storage-name>
-export TENANT_ID=<tenant-id>
-export CLIENT_ID=<client-id>
-export CLIENT_SECRET=<client-secret>
-export ONEDRIVE_USER=<onedrive-user-upn-or-object-id>
 ```
 
 Create the resource group, deployment storage, and Azure Files share:
@@ -186,6 +167,12 @@ az storage share-rm create \
   --resource-group "$RESOURCE_GROUP" \
   --storage-account "$STORAGE_ACCOUNT" \
   --name "$FILE_SHARE" \
+  --quota 10
+
+az storage share-rm create \
+  --resource-group "$RESOURCE_GROUP" \
+  --storage-account "$STORAGE_ACCOUNT" \
+  --name "$RESULTS_SHARE" \
   --quota 10
 ```
 
@@ -244,6 +231,12 @@ Mount path: /mnt/dependencies
 Storage account: <STORAGE_ACCOUNT>
 File share: jobspy-dependencies
 Access: storage account key
+
+Name: results
+Mount path: /mnt/jobspy-data
+Storage account: <STORAGE_ACCOUNT>
+File share: jobspy-results
+Access: storage account key
 ```
 
 Then configure the application settings:
@@ -256,16 +249,12 @@ az functionapp config appsettings set \
   FUNCTIONS_WORKER_RUNTIME=python \
   AZURE_FILES_DEPENDENCY_PATH=/mnt/dependencies \
   PLAYWRIGHT_BROWSERS_PATH=/mnt/dependencies/ms-playwright \
-  AZURE_TENANT_ID="$TENANT_ID" \
-  AZURE_CLIENT_ID="$CLIENT_ID" \
-  AZURE_CLIENT_SECRET="$CLIENT_SECRET" \
-  ONEDRIVE_USER="$ONEDRIVE_USER" \
-  ONEDRIVE_FOLDER=JobSpy
+  JOBSPY_OUTPUT_DIRECTORY=/mnt/jobspy-data
 ```
 
-Create the OneDrive `JobSpy` folder before the first invocation. Package and
-deploy only the function code and project data; do not include `.venv` or the
-dependency directory in the deployment archive:
+Create the results directory in the mounted Azure Files share before the first
+invocation. Package and deploy only the function code and project data; do not
+include `.venv` or the dependency directory in the deployment archive:
 
 ```bash
 rm -rf /tmp/jobspy-deployment
@@ -304,11 +293,10 @@ az monitor app-insights component show \
   --query '[].{name:name,connectionString:connectionString}'
 ```
 
-If the mounted dependency share is not visible, verify the mount path,
-storage-account key, share name, and that the share contains `pandas`,
-`playwright`, and the `ms-playwright` browser directory. Never echo
-`CLIENT_SECRET` or commit it to the repository; use Function App settings or
-Key Vault.
+If either mounted share is not visible, verify the mount path, storage-account
+key, and share name. The dependency share must contain `pandas`, `playwright`,
+and the `ms-playwright` browser directory. The results share must be writable
+and retain the three JSON files between invocations.
 
 ### Semiconductor companies
 
