@@ -199,6 +199,9 @@ def main(output_directory: Path | None = None) -> dict[str, Path]:
     )
 
     portal_jobs = scrape_semiconductor_career_portals_playwright(
+        role="intern",
+        search_query="intern",
+        filter_role=None,
         keywords_file=KEYWORDS_FILE,
         career_sites_file=CAREER_SITES_FILE,
         results_wanted=RESULT_LIMIT,
