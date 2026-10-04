@@ -18,7 +18,7 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 
 
 @app.route(route="scrape-semiconductor", methods=["POST", "GET"])
-def scrape_semiconductor(request: func.HttpRequest) -> func.HttpResponse:
+def scrape_semiconductor(req: func.HttpRequest) -> func.HttpResponse:
     """Run the scrape and persist JSON directly to the Azure Files mount."""
     try:
         from run_semiconductor_scrape import main as run_scrape
