@@ -61,11 +61,10 @@ JOBSPY_OUTPUT_DIRECTORY=/mnt/jobspy-data
 
 The included `Dockerfile` installs all Python packages, Firefox, and Firefox's
 native Linux libraries. This is required for the Playwright career-portal
-phase. Flex Consumption with a standard Python image is not supported for
-this workload; use a Linux Elastic Premium or Dedicated App Service plan with
-a custom container.
+phase. Run the image in Azure Container Instances (ACI); the container
+exposes the Azure Functions HTTP endpoint directly.
 
-#### Deploy with Azure Container Registry and Elastic Premium
+#### Deploy with Azure Container Registry and Azure Container Instances
 
 Use Azure Cloud Shell with Bash. Replace every angle-bracket value and keep
 storage keys out of shell history when possible:
@@ -77,7 +76,9 @@ export FUNCTION_APP=<globally-unique-function-app-name>
 export STORAGE_ACCOUNT=<globally-unique-storage-account-name>
 export RESULTS_SHARE=jobspy-results
 export ACR_NAME=<globally-unique-acr-name>
-export PLAN_NAME=<function-plan-name>
+export CONTAINER_NAME=<globally-unique-container-name>
+export DNS_LABEL=<globally-unique-dns-label>
+export GITHUB_REPOSITORY=https://github.com/blongstaff30/JobSpy.git
 ```
 
 Create the resource group, registry, storage account, and persistent results
@@ -111,32 +112,21 @@ az storage share-rm create \
   --quota 10
 ```
 
-Clone the repository and build the image in Azure. `az acr build` runs the
-Linux Docker build in Azure, so Cloud Shell does not need Docker or Python
-3.11 installed:
+The `Dockerfile` is stored in this GitHub repository. Build the image directly
+from GitHub with Azure Container Registry. `az acr build` runs the Linux Docker
+build in Azure, so Cloud Shell does not need Docker or Python 3.11 installed:
 
 ```bash
-cd "$HOME"
-rm -rf jobspy
-git clone https://github.com/blongstaff30/JobSpy.git jobspy
-cd jobspy
-
 az acr build \
   --registry "$ACR_NAME" \
   --image jobspy:latest \
-  .
+  --file Dockerfile \
+  "$GITHUB_REPOSITORY"
 ```
 
-Create a Linux Elastic Premium plan and a container-based Function App:
+Get the registry credentials and create the Azure Files results share:
 
 ```bash
-az functionapp plan create \
-  --name "$PLAN_NAME" \
-  --resource-group "$RESOURCE_GROUP" \
-  --location "$LOCATION" \
-  --sku EP1 \
-  --is-linux
-
 ACR_LOGIN_SERVER=$(az acr show \
   --name "$ACR_NAME" \
   --resource-group "$RESOURCE_GROUP" \
@@ -150,89 +140,127 @@ ACR_PASSWORD=$(az acr credential show \
   --name "$ACR_NAME" \
   --query 'passwords[0].value' -o tsv)
 
-az functionapp create \
-  --name "$FUNCTION_APP" \
+az storage account create \
+  --name "$STORAGE_ACCOUNT" \
   --resource-group "$RESOURCE_GROUP" \
-  --plan "$PLAN_NAME" \
-  --storage-account "$STORAGE_ACCOUNT" \
-  --deployment-container-image-name "$ACR_LOGIN_SERVER/jobspy:latest" \
-  --docker-registry-server-url "https://$ACR_LOGIN_SERVER" \
-  --docker-registry-server-user "$ACR_USERNAME" \
-  --docker-registry-server-password "$ACR_PASSWORD"
-```
+  --location "$LOCATION" \
+  --sku Standard_LRS
 
-Mount only the results share. Dependencies and browser libraries are already
-inside the image:
-
-```bash
-az webapp config storage-account add \
-  --name "$FUNCTION_APP" \
-  --resource-group "$RESOURCE_GROUP" \
-  --custom-id results \
-  --storage-type AzureFiles \
+STORAGE_KEY=$(az storage account keys list \
   --account-name "$STORAGE_ACCOUNT" \
-  --share-name "$RESULTS_SHARE" \
-  --access-key "$STORAGE_KEY" \
-  --mount-path /mnt/jobspy-data
+  --resource-group "$RESOURCE_GROUP" \
+  --query '[0].value' -o tsv)
+
+az storage share-rm create \
+  --resource-group "$RESOURCE_GROUP" \
+  --storage-account "$STORAGE_ACCOUNT" \
+  --name "$RESULTS_SHARE" \
+  --quota 10
 ```
 
-Configure the output path and restart the app:
+ACI needs an Azure Storage connection string for the Functions host and the
+storage-account key to mount the results share:
 
 ```bash
-az functionapp config appsettings set \
-  --name "$FUNCTION_APP" \
+AZURE_WEBJOBS_STORAGE=$(az storage account show-connection-string \
+  --name "$STORAGE_ACCOUNT" \
   --resource-group "$RESOURCE_GROUP" \
-  --settings \
-  JOBSPY_OUTPUT_DIRECTORY=/mnt/jobspy-data \
-  FUNCTIONS_WORKER_RUNTIME=python
+  --query connectionString -o tsv)
 
-az functionapp restart \
-  --name "$FUNCTION_APP" \
+az container create \
+  --name "$CONTAINER_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --location "$LOCATION" \
+  --image "$ACR_LOGIN_SERVER/jobspy:latest" \
+  --registry-login-server "$ACR_LOGIN_SERVER" \
+  --registry-username "$ACR_USERNAME" \
+  --registry-password "$ACR_PASSWORD" \
+  --dns-name-label "$DNS_LABEL" \
+  --ports 80 \
+  --ip-address Public \
+  --os-type Linux \
+  --cpu 2 \
+  --memory 4 \
+  --azure-file-volume-account-name "$STORAGE_ACCOUNT" \
+  --azure-file-volume-account-key "$STORAGE_KEY" \
+  --azure-file-volume-share-name "$RESULTS_SHARE" \
+  --azure-file-volume-mount-path /mnt/jobspy-data \
+  --environment-variables \
+    FUNCTIONS_WORKER_RUNTIME=python \
+    JOBSPY_OUTPUT_DIRECTORY=/mnt/jobspy-data \
+    AzureWebJobsStorage="$AZURE_WEBJOBS_STORAGE"
+```
+
+Find the public ACI endpoint:
+
+```bash
+FQDN=$(az container show \
+  --name "$CONTAINER_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query ipAddress.fqdn -o tsv)
+printf 'Function endpoint: http://%s/api/scrape-semiconductor\n' "$FQDN"
+```
+
+ACI is not an Azure Function App resource, so it does not provide Function App
+keys or `az functionapp function list`. The container's HTTP endpoint is
+public unless you add network restrictions. Invoke the scrape with:
+
+```bash
+curl --fail-with-body --request POST \
+  "http://${FQDN}/api/scrape-semiconductor"
+```
+
+Check container state and logs:
+
+```bash
+az container show \
+  --name "$CONTAINER_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query "{state:instanceView.state,ip:ipAddress.ip,fqdn:ipAddress.fqdn}" \
+  --output table
+
+az container logs \
+  --name "$CONTAINER_NAME" \
   --resource-group "$RESOURCE_GROUP"
 ```
 
-Retrieve the function key and invoke the scrape:
+To publish a code or Dockerfile update, rebuild from GitHub and recreate the
+container:
 
 ```bash
-FUNCTION_KEY=$(az functionapp keys list \
-  --name "$FUNCTION_APP" \
-  --resource-group "$RESOURCE_GROUP" \
-  --query 'functionKeys.default' -o tsv)
-
-curl -X POST \
-  "https://${FUNCTION_APP}.azurewebsites.net/api/scrape-semiconductor?code=${FUNCTION_KEY}"
-```
-
-Check deployment status and application logs:
-
-```bash
-az functionapp log deployment list \
-  --name "$FUNCTION_APP" \
-  --resource-group "$RESOURCE_GROUP"
-az monitor app-insights component show \
-  --resource-group "$RESOURCE_GROUP" \
-  --query '[].{name:name,connectionString:connectionString}'
-```
-
-Flex Consumption SCM log streaming is not supported. Use Application Insights
-Logs for runtime errors. The only mounted share in this deployment is the
-results share; the container image provides Python, Playwright, Firefox, and
-the native browser libraries. The results share must be writable and retain
-the three JSON files between invocations.
-
-To publish an application update, rebuild the image and restart the Function
-App:
-
-```bash
-cd "$HOME/jobspy"
 az acr build \
   --registry "$ACR_NAME" \
   --image jobspy:latest \
-  .
-az functionapp restart \
-  --name "$FUNCTION_APP" \
+  --file Dockerfile \
+  "$GITHUB_REPOSITORY"
+
+az container delete \
+  --name "$CONTAINER_NAME" \
   --resource-group "$RESOURCE_GROUP"
+
+# Run the az container create command above again.
 ```
+
+View the persisted results from Cloud Shell:
+
+```bash
+mkdir -p "$HOME/jobspy-results"
+az storage file download-batch \
+  --account-name "$STORAGE_ACCOUNT" \
+  --account-key "$STORAGE_KEY" \
+  --source "$RESULTS_SHARE" \
+  --destination "$HOME/jobspy-results"
+```
+
+Container logs replace Function App log streaming:
+
+```bash
+az container logs \
+  --name "$CONTAINER_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --follow
+```
+
 
 ### Semiconductor companies
 
