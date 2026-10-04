@@ -27,6 +27,9 @@ jobs:
         with:
           context: .
           file: Dockerfile
+          no-cache: true
+          pull: true
+          progress: plain
           push: true
           tags: |
             ${{ secrets.ACR_LOGIN_SERVER }}/jobspy:latest
