@@ -14,7 +14,7 @@ dependency_path = os.environ.get("AZURE_FILES_DEPENDENCY_PATH", "/mnt/dependenci
 if dependency_path not in sys.path:
     sys.path.insert(0, dependency_path)
 
-app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
+app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 
 @app.route(route="scrape-semiconductor", methods=["POST", "GET"])

@@ -231,8 +231,10 @@ printf 'Function endpoint: http://%s/api/scrape-semiconductor\n' "$FQDN"
 ```
 
 ACI is not an Azure Function App resource, so it does not provide Function App
-keys or `az functionapp function list`. The container's HTTP endpoint is
-public unless you add network restrictions. Invoke the scrape with:
+keys or `az functionapp function list`. This container uses an anonymous HTTP
+trigger because ACI does not provide the Function App key-management APIs.
+The endpoint is public unless you add network restrictions or put an
+authenticated proxy/API gateway in front of it. Invoke the scrape with:
 
 ```bash
 curl --fail-with-body --request POST \
