@@ -638,6 +638,15 @@ def scrape_semiconductor_career_portals_playwright(
     portal_search_query = search_query if search_query is not None else role
     location_aliases = _location_aliases(location)
     rows: list[dict[str, object]] = []
+    total_limit = results_wanted if results_wanted_per_company is None else None
+    if verbose:
+        log.info(
+            "Playwright career portals: selected %d companies; search=%r; "
+            "per-company limit=%d",
+            len(selected),
+            portal_search_query,
+            results_wanted_per_company or results_wanted,
+        )
 
     def should_abort(request) -> bool:
         if request.resource_type in {"image", "font", "media", "stylesheet"}:
@@ -757,7 +766,7 @@ def scrape_semiconductor_career_portals_playwright(
                 company_rows_before = len(rows)
                 company_limit = results_wanted_per_company or results_wanted
                 company_deadline = time.monotonic() + company_timeout
-                if len(rows) >= results_wanted:
+                if total_limit is not None and len(rows) >= total_limit:
                     break
                 if company.careers_url.casefold() == "default":
                     fallback = scrape_semiconductor_jobs(
@@ -778,14 +787,7 @@ def scrape_semiconductor_career_portals_playwright(
                                 role_terms,
                             )
                         ]
-                        rows.extend(
-                            fallback_rows[
-                                : min(
-                                    company_limit,
-                                    results_wanted - len(rows),
-                                )
-                            ]
-                        )
+                        rows.extend(fallback_rows[:company_limit])
                     continue
                 pages_read = 0
                 jobs_before = len(rows)
@@ -801,7 +803,10 @@ def scrape_semiconductor_career_portals_playwright(
                         or
                         pages_read >= max_pages_per_company
                         or len(rows) - company_rows_before >= company_limit
-                        or len(rows) >= results_wanted
+                        or (
+                            total_limit is not None
+                            and len(rows) >= total_limit
+                        )
                     ):
                         break
                     try:
@@ -855,7 +860,10 @@ def scrape_semiconductor_career_portals_playwright(
                             time.monotonic() < company_deadline
                             and pages_read < max_pages_per_company
                             and len(rows) - company_rows_before < company_limit
-                            and len(rows) < results_wanted
+                            and (
+                                total_limit is None
+                                or len(rows) < total_limit
+                            )
                         ):
                             pages_read += 1
                             if verbose:
@@ -876,12 +884,21 @@ def scrape_semiconductor_career_portals_playwright(
                                     role_terms,
                                     location_aliases,
                                     len(rows) - company_rows_before,
-                                    min(company_limit, results_wanted - len(rows)),
+                                    min(
+                                        company_limit
+                                        - (len(rows) - company_rows_before),
+                                        (
+                                            total_limit - len(rows)
+                                            if total_limit is not None
+                                            else company_limit
+                                        ),
+                                    ),
                                     ignore_role_keywords,
                                 )
                             )
                             rows = rows[:company_rows_before + company_limit]
-                            rows = rows[:results_wanted]
+                            if total_limit is not None:
+                                rows = rows[:total_limit]
                             if not next_page(page, company_deadline):
                                 break
                             if delay:
@@ -924,19 +941,32 @@ def scrape_semiconductor_career_portals_playwright(
                 except Exception as exc:
                     log.warning("Failed to close Playwright %s: %s", name, exc)
 
-    if fallback_to_job_boards and len(rows) < results_wanted:
+    if fallback_to_job_boards and (
+        total_limit is None or len(rows) < total_limit
+    ):
         from jobspy import scrape_semiconductor_career_portals
 
+        selected_company_names = [company.name for company in selected]
         fallback = scrape_semiconductor_career_portals(
             role=role,
+            career_sites_file=career_sites_file,
             location=location,
-            results_wanted=results_wanted,
-            companies=companies,
+            results_wanted=(
+                total_limit - len(rows)
+                if total_limit is not None
+                else results_wanted
+            ),
+            companies=selected_company_names,
             fallback_to_job_boards=True,
             fallback_sites=fallback_sites,
         )
         if not fallback.empty:
-            rows.extend(fallback.head(results_wanted - len(rows)).to_dict("records"))
+            fallback_limit = (
+                total_limit - len(rows)
+                if total_limit is not None
+                else len(fallback)
+            )
+            rows.extend(fallback.head(fallback_limit).to_dict("records"))
         elif verbose:
             log.info("fallback boards: no jobs returned")
 
@@ -950,7 +980,9 @@ def scrape_semiconductor_career_portals_playwright(
         "target_company",
         "target_careers_url",
     ]
-    return pd.DataFrame(rows[:results_wanted], columns=columns)
+    if total_limit is not None:
+        rows = rows[:total_limit]
+    return pd.DataFrame(rows, columns=columns)
 
 
 def _normalized_host(url: str) -> str:
