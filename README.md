@@ -217,7 +217,7 @@ version matching the Function App.
 git clone https://github.com/blongstaff30/JobSpy/ jobspy
 cd jobspy
 
-python3.11 -m venv /tmp/jobspy-build
+python -m venv /tmp/jobspy-build
 source /tmp/jobspy-build/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt --target /tmp/jobspy-dependencies
