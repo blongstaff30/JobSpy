@@ -112,17 +112,42 @@ az storage share-rm create \
   --quota 10
 ```
 
-The `Dockerfile` is stored in this GitHub repository. Build the image directly
-from GitHub with Azure Container Registry. `az acr build` runs the Linux Docker
-build in Azure, so Cloud Shell does not need Docker or Python 3.11 installed:
+The `Dockerfile` is stored in this GitHub repository. Build and push the image
+with the included GitHub Actions workflow,
+`.github/workflows/build-aci-image.yml`. This avoids both the Docker daemon
+requirement in Cloud Shell and the ACR Tasks feature, which may be disabled by
+an Azure subscription or registry policy.
+
+First retrieve the ACR login server and admin credentials:
 
 ```bash
-az acr build \
-  --registry "$ACR_NAME" \
-  --image jobspy:latest \
-  --file Dockerfile \
-  "$GITHUB_REPOSITORY"
+ACR_LOGIN_SERVER=$(az acr show \
+  --name "$ACR_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query loginServer -o tsv)
+
+ACR_USERNAME=$(az acr credential show \
+  --name "$ACR_NAME" \
+  --query username -o tsv)
+
+ACR_PASSWORD=$(az acr credential show \
+  --name "$ACR_NAME" \
+  --query 'passwords[0].value' -o tsv)
 ```
+
+In the GitHub repository, open **Settings → Secrets and variables → Actions**,
+create repository secrets with these exact names, and paste the values:
+
+```text
+ACR_LOGIN_SERVER
+ACR_USERNAME
+ACR_PASSWORD
+```
+
+Run the **Build ACI image** workflow from the **Actions** tab, or push to the
+`main` branch. The workflow builds the Dockerfile on a GitHub-hosted Linux
+runner and pushes both `latest` and the commit-tagged image to ACR. Cloud Shell
+does not need Docker installed.
 
 Get the registry credentials and create the Azure Files results share:
 
@@ -224,16 +249,11 @@ az container logs \
   --resource-group "$RESOURCE_GROUP"
 ```
 
-To publish a code or Dockerfile update, rebuild from GitHub and recreate the
-container:
+To publish a code or Dockerfile update, push the change to `main` or manually
+run **Build ACI image**. After the workflow succeeds, recreate the container
+so ACI pulls the new image:
 
 ```bash
-az acr build \
-  --registry "$ACR_NAME" \
-  --image jobspy:latest \
-  --file Dockerfile \
-  "$GITHUB_REPOSITORY"
-
 az container delete \
   --name "$CONTAINER_NAME" \
   --resource-group "$RESOURCE_GROUP"
