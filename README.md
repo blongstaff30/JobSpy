@@ -45,122 +45,53 @@ jobs.to_csv("jobs.csv", quoting=csv.QUOTE_NONNUMERIC, escapechar="\\", index=Fal
 
 The semiconductor runner can be deployed as an Azure Function with
 `function_app.py`. The function is HTTP-triggered at
-`/api/scrape-semiconductor` and stores these files in an Azure Files share:
+`/api/scrape-semiconductor` and stores these files in a mounted Azure Files
+results share:
 
 - `semiconductor_jobs.json`
 - `semiconductor_jobs_previous.json`
 - `semiconductor_jobs_difference.json`
 
-The Function App must define these application settings:
+The application settings for the container deployment are:
 
 ```text
 FUNCTIONS_WORKER_RUNTIME=python
-AZURE_FILES_DEPENDENCY_PATH=/mnt/dependencies
-PLAYWRIGHT_BROWSERS_PATH=/mnt/dependencies/ms-playwright
 JOBSPY_OUTPUT_DIRECTORY=/mnt/jobspy-data
 ```
 
-Mount the Azure Files share containing dependencies at `/mnt/dependencies`.
-Mount a writable Azure Files share for results at `/mnt/jobspy-data`. The
-results share preserves the previous snapshot between invocations.
+The included `Dockerfile` installs all Python packages, Firefox, and Firefox's
+native Linux libraries. This is required for the Playwright career-portal
+phase. Flex Consumption with a standard Python image is not supported for
+this workload; use a Linux Elastic Premium or Dedicated App Service plan with
+a custom container.
 
-#### Flex Consumption with an Azure Files dependency mount
+#### Deploy with Azure Container Registry and Elastic Premium
 
-Use a Linux Flex Consumption Function App and mount an Azure Files share at
-`/mnt/dependencies`. The function inserts that path into `sys.path` before
-loading pandas, Playwright, and the other project dependencies. Set
-`AZURE_FILES_DEPENDENCY_PATH` only if you choose a different mount path.
-
-Build the dependency share with the same Linux/Python version used by the
-Function App. Do not copy the Windows `.venv` directory. From a Linux
-environment (Cloud Shell, WSL, or a Linux CI runner), install dependencies
-directly into the share:
-
-```bash
-python3.11 -m venv /tmp/jobspy-build
-source /tmp/jobspy-build/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt --target /tmp/jobspy-dependencies
-python -m playwright install firefox
-mkdir -p /tmp/jobspy-dependencies/ms-playwright
-cp -a "${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}/." \
-  /tmp/jobspy-dependencies/ms-playwright/
-```
-
-Upload the contents of `/tmp/jobspy-dependencies` to the root of the Azure
-Files share, then configure the Function App Storage mount with:
-
-```text
-Mount path: /mnt/dependencies
-```
-
-Set `PLAYWRIGHT_BROWSERS_PATH=/mnt/dependencies/ms-playwright` in the Function
-App settings. The mounted share must contain the installed Python packages
-(`pandas`, `playwright`, `requests`, and their dependencies) and the Firefox
-browser files. Keep `requirements.txt` in the deployment package as the
-dependency manifest, but do not run pip install during each function start.
-
-Create the Function App with its runtime stack defined in the creation command.
-For Flex Consumption, the runtime and Python version cannot be changed after
-the app is created. If the app already exists with the wrong runtime, create a
-new Function App with the desired settings:
-
-```powershell
-az functionapp create --name <function-app-name> `
-  --resource-group <resource-group> --storage-account <storage-account> `
-  --flexconsumption-location eastus `
-  --runtime python --runtime-version 3.11 --functions-version 4
-```
-
-Deploy the application code after the Function App has been created:
-
-```powershell
-az functionapp deployment source config-zip --name <function-app-name> `
-  --resource-group <resource-group> --src <deployment.zip>
-az functionapp config appsettings set --name <function-app-name> `
-  --resource-group <resource-group> --settings `
-  FUNCTIONS_WORKER_RUNTIME=python `
-  AZURE_FILES_DEPENDENCY_PATH=/mnt/dependencies `
-  PLAYWRIGHT_BROWSERS_PATH=/mnt/dependencies/ms-playwright `
-  JOBSPY_OUTPUT_DIRECTORY=/mnt/jobspy-data
-```
-
-Configure the Azure Files mount in the Function App's **Storage mounts**
-settings. Use a share in the same region and grant the Function App identity
-the required storage permissions. Test the mount before invoking the function.
-The endpoint uses the Function App's function key:
-
-```powershell
-curl -X POST "https://<function-app-name>.azurewebsites.net/api/scrape-semiconductor?code=<function-key>"
-```
-
-The scrape can take several minutes. Configure an appropriate Flex timeout and
-memory allocation for the Playwright workload. `Dockerfile` is retained for
-local/container-based testing but is not required for this Flex deployment.
-
-#### Complete setup from Azure Cloud Shell
-
-The following is a Cloud Shell-oriented sequence. Use **Bash** Cloud Shell,
-replace every value in angle brackets, and keep secrets out of shell history
-when possible. Cloud Shell includes Azure CLI, Python, and storage tools.
+Use Azure Cloud Shell with Bash. Replace every angle-bracket value and keep
+storage keys out of shell history when possible:
 
 ```bash
 export LOCATION=northcentralus
 export RESOURCE_GROUP=<resource-group>
-export FUNCTION_APP=<GLOBALLY-unique-function-app-name>
-export STORAGE_ACCOUNT=<GLOBALLY-unique-storage-account-name>
-export FILE_SHARE=jobspy-dependencies
+export FUNCTION_APP=<globally-unique-function-app-name>
+export STORAGE_ACCOUNT=<globally-unique-storage-account-name>
 export RESULTS_SHARE=jobspy-results
-export DEPLOYMENT_STORAGE=<GLOBALLY-unique-deployment-storage-name>
+export ACR_NAME=<globally-unique-acr-name>
+export PLAN_NAME=<function-plan-name>
 ```
 
-Create the resource group, deployment storage, and Azure Files share:
+Create the resource group, registry, storage account, and persistent results
+share:
 
 ```bash
-az provider register --namespace Microsoft.Compute
-az provider register --namespace Microsoft.Web
-az provider register --namespace Microsoft.Insights
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
+
+az acr create \
+  --name "$ACR_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --location "$LOCATION" \
+  --sku Basic \
+  --admin-enabled true
 
 az storage account create \
   --name "$STORAGE_ACCOUNT" \
@@ -176,78 +107,64 @@ STORAGE_KEY=$(az storage account keys list \
 az storage share-rm create \
   --resource-group "$RESOURCE_GROUP" \
   --storage-account "$STORAGE_ACCOUNT" \
-  --name "$FILE_SHARE" \
-  --quota 10
-
-az storage share-rm create \
-  --resource-group "$RESOURCE_GROUP" \
-  --storage-account "$STORAGE_ACCOUNT" \
   --name "$RESULTS_SHARE" \
   --quota 10
 ```
 
-Create the Flex Consumption Function App with the runtime defined at creation.
-The runtime stack and Python version cannot be changed after this command. The
-deployment storage account is used by the Functions platform; the dependency
-share is mounted separately.
+Clone the repository and build the image in Azure. `az acr build` runs the
+Linux Docker build in Azure, so Cloud Shell does not need Docker or Python
+3.11 installed:
 
 ```bash
-az storage account create \
-  --name "$DEPLOYMENT_STORAGE" \
+cd "$HOME"
+rm -rf jobspy
+git clone https://github.com/blongstaff30/JobSpy.git jobspy
+cd jobspy
+
+az acr build \
+  --registry "$ACR_NAME" \
+  --image jobspy:latest \
+  .
+```
+
+Create a Linux Elastic Premium plan and a container-based Function App:
+
+```bash
+az functionapp plan create \
+  --name "$PLAN_NAME" \
   --resource-group "$RESOURCE_GROUP" \
   --location "$LOCATION" \
-  --sku Standard_LRS
+  --sku EP1 \
+  --is-linux
+
+ACR_LOGIN_SERVER=$(az acr show \
+  --name "$ACR_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query loginServer -o tsv)
+
+ACR_USERNAME=$(az acr credential show \
+  --name "$ACR_NAME" \
+  --query username -o tsv)
+
+ACR_PASSWORD=$(az acr credential show \
+  --name "$ACR_NAME" \
+  --query 'passwords[0].value' -o tsv)
 
 az functionapp create \
   --name "$FUNCTION_APP" \
   --resource-group "$RESOURCE_GROUP" \
-  --storage-account "$DEPLOYMENT_STORAGE" \
-  --flexconsumption-location "$LOCATION" \
-  --runtime python \
-  --runtime-version 3.11 \
-  --functions-version 4
+  --plan "$PLAN_NAME" \
+  --storage-account "$STORAGE_ACCOUNT" \
+  --deployment-container-image-name "$ACR_LOGIN_SERVER/jobspy:latest" \
+  --docker-registry-server-url "https://$ACR_LOGIN_SERVER" \
+  --docker-registry-server-user "$ACR_USERNAME" \
+  --docker-registry-server-password "$ACR_PASSWORD"
 ```
 
-Prepare the dependency share in Cloud Shell. Build the packages for Linux,
-not from a Windows virtual environment. If Cloud Shell does not have Python
-3.11 available, use a Linux CI runner or Cloud Shell's supported Python
-version matching the Function App.
+Mount only the results share. Dependencies and browser libraries are already
+inside the image:
 
 ```bash
-git clone https://github.com/blongstaff30/JobSpy/ jobspy
-cd jobspy
-
-python -m venv /tmp/jobspy-build
-source /tmp/jobspy-build/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt --target /tmp/jobspy-dependencies
-python -m playwright install firefox
-
-mkdir -p /tmp/jobspy-dependencies/ms-playwright
-cp -a "${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}/." \
-  /tmp/jobspy-dependencies/ms-playwright/
-
-az storage file upload-batch \
-  --account-name "$STORAGE_ACCOUNT" \
-  --account-key "$STORAGE_KEY" \
-  --destination "$FILE_SHARE" \
-  --source /tmp/jobspy-dependencies
-```
-
-Mount both Azure Files shares with the Azure CLI. The `custom-id` values must
-be unique within the Function App:
-
-```bash
-az webapp config storage-account add \
-  --name "$FUNCTION_APP" \
-  --resource-group "$RESOURCE_GROUP" \
-  --custom-id dependencies \
-  --storage-type AzureFiles \
-  --account-name "$STORAGE_ACCOUNT" \
-  --share-name "$FILE_SHARE" \
-  --access-key "$STORAGE_KEY" \
-  --mount-path /mnt/dependencies
-
 az webapp config storage-account add \
   --name "$FUNCTION_APP" \
   --resource-group "$RESOURCE_GROUP" \
@@ -259,44 +176,19 @@ az webapp config storage-account add \
   --mount-path /mnt/jobspy-data
 ```
 
-Verify that both mounts were registered:
-
-```bash
-az webapp config storage-account list \
-  --name "$FUNCTION_APP" \
-  --resource-group "$RESOURCE_GROUP" \
-  --output table
-```
-
-Then configure the application settings:
+Configure the output path and restart the app:
 
 ```bash
 az functionapp config appsettings set \
   --name "$FUNCTION_APP" \
   --resource-group "$RESOURCE_GROUP" \
   --settings \
-  AZURE_FILES_DEPENDENCY_PATH=/mnt/dependencies \
-  PLAYWRIGHT_BROWSERS_PATH=/mnt/dependencies/ms-playwright \
-  JOBSPY_OUTPUT_DIRECTORY=/mnt/jobspy-data
-```
+  JOBSPY_OUTPUT_DIRECTORY=/mnt/jobspy-data \
+  FUNCTIONS_WORKER_RUNTIME=python
 
-Create the results directory in the mounted Azure Files share before the first
-invocation. Package and deploy only the function code and project data; do not
-include `.venv` or the dependency directory in the deployment archive:
-
-```bash
-rm -rf /tmp/jobspy-deployment
-mkdir /tmp/jobspy-deployment
-cp function_app.py run_semiconductor_scrape.py keywords.txt career_sites.txt \
-  requirements.txt host.json /tmp/jobspy-deployment/
-cp -r jobspy /tmp/jobspy-deployment/
-cd /tmp/jobspy-deployment
-zip -r /tmp/jobspy.zip .
-
-az functionapp deployment source config-zip \
+az functionapp restart \
   --name "$FUNCTION_APP" \
-  --resource-group "$RESOURCE_GROUP" \
-  --src /tmp/jobspy.zip
+  --resource-group "$RESOURCE_GROUP"
 ```
 
 Retrieve the function key and invoke the scrape:
@@ -311,7 +203,7 @@ curl -X POST \
   "https://${FUNCTION_APP}.azurewebsites.net/api/scrape-semiconductor?code=${FUNCTION_KEY}"
 ```
 
-Check execution logs from Cloud Shell:
+Check deployment status and application logs:
 
 ```bash
 az functionapp log deployment list \
@@ -322,10 +214,25 @@ az monitor app-insights component show \
   --query '[].{name:name,connectionString:connectionString}'
 ```
 
-If either mounted share is not visible, verify the mount path, storage-account
-key, and share name. The dependency share must contain `pandas`, `playwright`,
-and the `ms-playwright` browser directory. The results share must be writable
-and retain the three JSON files between invocations.
+Flex Consumption SCM log streaming is not supported. Use Application Insights
+Logs for runtime errors. The only mounted share in this deployment is the
+results share; the container image provides Python, Playwright, Firefox, and
+the native browser libraries. The results share must be writable and retain
+the three JSON files between invocations.
+
+To publish an application update, rebuild the image and restart the Function
+App:
+
+```bash
+cd "$HOME/jobspy"
+az acr build \
+  --registry "$ACR_NAME" \
+  --image jobspy:latest \
+  .
+az functionapp restart \
+  --name "$FUNCTION_APP" \
+  --resource-group "$RESOURCE_GROUP"
+```
 
 ### Semiconductor companies
 
