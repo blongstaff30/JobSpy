@@ -14,9 +14,6 @@ dependency_path = os.environ.get("AZURE_FILES_DEPENDENCY_PATH", "/mnt/dependenci
 if dependency_path not in sys.path:
     sys.path.insert(0, dependency_path)
 
-from run_semiconductor_scrape import main as run_scrape
-
-
 app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 
 
@@ -24,6 +21,8 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 def scrape_semiconductor(request: func.HttpRequest) -> func.HttpResponse:
     """Run the scrape and persist JSON directly to the Azure Files mount."""
     try:
+        from run_semiconductor_scrape import main as run_scrape
+
         output_directory = Path(
             os.environ.get("JOBSPY_OUTPUT_DIRECTORY", "/mnt/jobspy-data")
         )

@@ -289,6 +289,7 @@ rm -rf /tmp/jobspy-deployment
 mkdir /tmp/jobspy-deployment
 cp function_app.py run_semiconductor_scrape.py keywords.txt career_sites.txt \
   requirements.txt host.json /tmp/jobspy-deployment/
+cp -r jobspy /tmp/jobspy-deployment/
 cd /tmp/jobspy-deployment
 zip -r /tmp/jobspy.zip .
 
