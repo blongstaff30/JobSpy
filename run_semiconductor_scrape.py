@@ -27,6 +27,7 @@ BOARD_SITES = [
     "google",
 ]
 KEYWORDS_FILE = Path(__file__).with_name("keywords.txt")
+CAREER_SITES_FILE = Path(__file__).with_name("career_sites.txt")
 
 
 def _default_output_directory() -> Path:
@@ -199,6 +200,7 @@ def main(output_directory: Path | None = None) -> dict[str, Path]:
 
     portal_jobs = scrape_semiconductor_career_portals_playwright(
         keywords_file=KEYWORDS_FILE,
+        career_sites_file=CAREER_SITES_FILE,
         results_wanted=RESULT_LIMIT,
         results_wanted_per_company=RESULT_LIMIT,
         fallback_to_job_boards=True,
